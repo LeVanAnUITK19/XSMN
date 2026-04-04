@@ -17,7 +17,7 @@ jobs:
           for i in 1 2 3; do
             echo "Attempt $i..."
 
-            STATUS=$(curl -s -o response.txt -w "%{http_code}" --max-time 120 $URL)
+            STATUS=$(curl -s -o response.txt -w "%{http_code}" --max-time 360 $URL)
 
             cat response.txt
             echo "HTTP Status: $STATUS"
