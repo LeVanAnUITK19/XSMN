@@ -12,7 +12,7 @@ jobs:
     steps:
       - name: Call Render API (retry 3 lần)
         run: |
-          URL="https://your-app.onrender.com/api/results/cron/xsmn"
+          URL="https://xsmn.onrender.com/api/results/cron/xsmn"
 
           for i in 1 2 3; do
             echo "Attempt $i..."
