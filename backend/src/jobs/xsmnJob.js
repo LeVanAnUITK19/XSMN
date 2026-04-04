@@ -53,7 +53,7 @@ cron.schedule("*/5 16 * * *", async () => {
   }
 });
 
-cron.schedule("0 17 * * *", async () => {
+cron.schedule("* * * * *", async () => {
   try {
     const date = new Date().toLocaleDateString("sv-SE");// Lấy ngày hiện tại theo format YYYY-MM-DD
     console.log("CRON TRIGGER:", new Date().toString());
