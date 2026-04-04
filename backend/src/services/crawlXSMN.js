@@ -5,16 +5,16 @@ export const crawlXSMN = async (date) => {
 
   // Format date để khớp với URL và text trên web Minh Ngọc (dd-mm-yyyy)
   const [y, m, d] = date.split("-");
-  const targetDateStr = `${d}-${m}-${y}`; 
+  const targetDateStr = `${d}-${m}-${y}`;
   const url = `https://www.minhngoc.net.vn/ket-qua-xo-so/mien-nam/${targetDateStr}.html`;
 
-  const browser = await puppeteer.launch({ 
+  const browser = await puppeteer.launch({
     headless: "new",
     args: [
-      '--no-sandbox', 
+      '--no-sandbox',
       '--disable-setuid-sandbox',
       '--window-size=1920,1080'
-    ] 
+    ]
   });
 
   const page = await browser.newPage();
@@ -33,12 +33,12 @@ export const crawlXSMN = async (date) => {
       const results = [];
       // Web dùng dấu / (31/03/2026), biến truyền vào dùng dấu - (31-03-2026)
       const webDateStr = targetStr.replace(/-/g, '/');
-      
+
       const blocks = document.querySelectorAll(".bkqmiennam");
 
       blocks.forEach((block) => {
         const dateText = block.querySelector(".ngay")?.textContent.trim();
-        
+
         // Chỉ lấy block có ngày khớp với ngày cần crawl
         if (!dateText || !dateText.includes(webDateStr)) return;
 
@@ -77,9 +77,9 @@ export const crawlXSMN = async (date) => {
     // 👉 SỬA LỖI LỆCH NGÀY: Tạo Date object dựa trên local time
     // date truyền vào là "2026-03-31" -> Y=2026, M=03, D=31
     const [year, month, day] = date.split("-").map(Number);
-    
+
     // Lưu ý: Tháng trong JS bắt đầu từ 0 (Tháng 1 là 0, tháng 3 là 2)
-    const localDate = new Date(year, month - 1, day); 
+    const localDate = new Date(year, month - 1, day);
 
     return {
       date: localDate,
