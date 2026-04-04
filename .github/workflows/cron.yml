@@ -1,0 +1,35 @@
+name: Cron XSMN
+
+on:
+  schedule:
+    - cron: '0 10 * * *'  # 17:00 VN (UTC+7)
+  workflow_dispatch:
+
+jobs:
+  call-api:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Call Render API (retry 3 lần)
+        run: |
+          URL="https://your-app.onrender.com/api/results/cron/xsmn"
+
+          for i in 1 2 3; do
+            echo "Attempt $i..."
+
+            STATUS=$(curl -s -o response.txt -w "%{http_code}" --max-time 120 $URL)
+
+            cat response.txt
+            echo "HTTP Status: $STATUS"
+
+            if [ "$STATUS" -eq 200 ]; then
+              echo "Success"
+              exit 0
+            fi
+
+            echo "Retry after 10s..."
+            sleep 10
+          done
+
+          echo "Failed after 3 attempts"
+          exit 1
