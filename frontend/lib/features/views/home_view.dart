@@ -16,6 +16,7 @@ class HomePageView extends StatefulWidget {
 class _HomePageState extends State<HomePageView> {
   late ResultViewModel vm;
   String selected = 'full';
+  final _scaffoldKey = GlobalKey<ScaffoldState>();
 
   @override
   void initState() {
@@ -29,7 +30,10 @@ class _HomePageState extends State<HomePageView> {
     if (vm.notFound) {
       vm.notFound = false;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        if (!mounted) return;
+        ScaffoldMessenger.of(
+          _scaffoldKey.currentContext ?? context,
+        ).showSnackBar(
           const SnackBar(
             content: Text('Không có dữ liệu cho ngày này'),
             duration: Duration(seconds: 2),
@@ -49,11 +53,21 @@ class _HomePageState extends State<HomePageView> {
   @override
   Widget build(BuildContext context) {
     if (vm.isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     if (vm.error != null) {
-      return Center(child: Text(vm.error!));
+      return Scaffold(
+        key: _scaffoldKey,
+        body: Center(child: Text(vm.error!)),
+      );
+    }
+
+    if (vm.result == null) {
+      return Scaffold(
+        key: _scaffoldKey,
+        body: const Center(child: Text('Không có dữ liệu')),
+      );
     }
 
     final provinces = vm.result!.provinces;
@@ -63,10 +77,11 @@ class _HomePageState extends State<HomePageView> {
     final date = DateFormat('EEEE, dd/MM/yyyy', 'vi_VN').format(dt);
 
     return Scaffold(
+      key: _scaffoldKey,
       appBar: AppBar(
         centerTitle: true,
         title: const Text(
-          "Xổ Số Miền Nam",
+          "Xổ Số Miền Nam Haha",
           style: TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.bold,
