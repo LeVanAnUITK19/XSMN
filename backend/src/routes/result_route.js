@@ -3,8 +3,7 @@ import {
   getResults,
   getResultByRegion,
   getResultByProvince,
-  createResult,
-  cronJob
+  createResult
 } from "../controllers/result_controller.js";
 import { crawlXSMN } from "../services/crawlXSMN.js";
 
