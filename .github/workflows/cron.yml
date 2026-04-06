@@ -19,4 +19,4 @@ jobs:
 
       - run: npm install puppeteer
 
-      - run: node crawler/crawl.js
+      - run: node crawl/crawlXSMN.js
