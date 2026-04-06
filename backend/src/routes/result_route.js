@@ -5,7 +5,7 @@ import {
   getResultByProvince,
   createResult
 } from "../controllers/result_controller.js";
-import { crawlXSMN } from "../services/crawlXSMN.js";
+import { crawlXSMN } from "../../../crawl/crawlXSMN.js";
 
 const router = express.Router();
 

@@ -3,7 +3,6 @@ import dotenv from 'dotenv';
 import cors from 'cors';
 import {connectDB} from './src/config/db.js';
 import resultRoutes from "./src/routes/result_route.js";
-import "./src/jobs/xsmnJob.js";
 
 dotenv.config();
 const app = express();
