@@ -28,4 +28,6 @@ router.get('/cron/xsmn', async (req, res) => {
   }
 });
 
+router.get('/health', (req, res) => res.send('ok'));
+
 export default router;
