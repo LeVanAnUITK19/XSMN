@@ -20,9 +20,21 @@ router.get('/cron/xsmn', async (req, res) => {
   if (isRunning) return res.send('Already running');
 
   isRunning = true;
+
   try {
+    console.log("CRON START");
+
     await crawlXSMN("2026-04-03");
+
+    console.log("CRON DONE");
+
     res.send('ok');
+  } catch (err) {
+    console.error("CRON ERROR:", err);  // 🔥 xem log Render
+
+    res.status(500).json({
+      message: err.message
+    });
   } finally {
     isRunning = false;
   }
