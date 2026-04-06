@@ -1,35 +1,22 @@
-name: Cron XSMN
+name: Crawl XSMN
 
 on:
   schedule:
-    - cron: '0 10 * * *'  # 17:00 VN (UTC+7)
+    - cron: '0 10 * * *'  # 16h VN
+    - cron: '0 6 * * *'
   workflow_dispatch:
 
 jobs:
-  call-api:
+  crawl:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Call Render API (retry 3 lần)
-        run: |
-          URL="https://xsmn.onrender.com/api/results/cron/xsmn"
+      - uses: actions/checkout@v4
 
-          for i in 1 2 3; do
-            echo "Attempt $i..."
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
 
-            STATUS=$(curl -s -o response.txt -w "%{http_code}" --max-time 360 $URL)
+      - run: npm install puppeteer
 
-            cat response.txt
-            echo "HTTP Status: $STATUS"
-
-            if [ "$STATUS" -eq 200 ]; then
-              echo "Success"
-              exit 0
-            fi
-
-            echo "Retry after 10s..."
-            sleep 10
-          done
-
-          echo "Failed after 3 attempts"
-          exit 1
+      - run: node crawler/crawl.js
