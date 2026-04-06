@@ -21,7 +21,7 @@ router.get('/cron/xsmn', async (req, res) => {
 
   isRunning = true;
   try {
-    await crawlXSMN();
+    await crawlXSMN("2026-04-03");
     res.send('ok');
   } finally {
     isRunning = false;
