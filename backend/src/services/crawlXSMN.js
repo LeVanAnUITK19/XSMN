@@ -1,4 +1,6 @@
 import puppeteer from "puppeteer";
+import dotenv from 'dotenv';
+dotenv.config();
 
 export const crawlXSMN = async (date) => {
   if (!date) throw new Error("Missing date");
@@ -10,6 +12,7 @@ export const crawlXSMN = async (date) => {
 
   const browser = await puppeteer.launch({
     headless: false,
+    executablePath: '/opt/render/.cache/puppeteer/chrome/linux-146.0.7680.153/chrome-linux64/chrome',
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
   });
 
