@@ -2,8 +2,7 @@ name: Crawl XSMN
 
 on:
   schedule:
-    - cron: '0 10 * * *'  # 16h VN
-    - cron: '0 6 * * *'
+    - cron: '0 11 * * *'  # 1VN
   workflow_dispatch:
 
 jobs:
