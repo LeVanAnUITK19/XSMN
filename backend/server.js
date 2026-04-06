@@ -11,7 +11,9 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-await connectDB(process.env.MONGODB_CONNECTIONSTRING);
+await connectDB(process.env.MONGODB_CONNECTIONSTRING)
+.then(() => console.log("DB connected"))
+  .catch(err => console.error(err));
 
 app.use("/api/results", resultRoutes);
 
