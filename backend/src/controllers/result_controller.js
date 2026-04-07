@@ -1,4 +1,5 @@
 import Result from "../models/results.js";
+import { saveResult as saveResultService } from "../services/saveResult.js";
 
 // GET all results
 export const getResults = async (req, res) => {
@@ -53,15 +54,13 @@ export const createResult = async (req, res) => {
 };
 
 export const saveResult = async (req, res) => {
-  try {    
-    const { date, region } = req.body;
-    const updatedData = await Result.findByIdAndUpdate({ date, region }, req.body, { new: true });
-    if (!updatedData) return res.status(404).json({ error: "Result not found" });
-    res.json(updatedData);
+  try {
+    const { date, region, provinces } = req.body;
+    const result = await saveResultService({ date, region, provinces });
+    res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
-  } 
-
+  }
 };
 
 
