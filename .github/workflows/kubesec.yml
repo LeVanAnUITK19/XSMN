@@ -1,0 +1,21 @@
+name: Crawl XSMN
+
+on:
+  schedule:
+    - cron: '0 9 * * *'  # 16h VN
+  workflow_dispatch: 
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm install
+
+      - run: node crawl/crawlXSMN_PUT.js
