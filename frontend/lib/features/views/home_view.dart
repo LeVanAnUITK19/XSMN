@@ -81,7 +81,7 @@ class _HomePageState extends State<HomePageView> {
       appBar: AppBar(
         centerTitle: true,
         title: const Text(
-          "Xổ Số Miền Nam Haha",
+          "Xổ Số Miền Nam",
           style: TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.bold,

@@ -4,6 +4,18 @@ import '../models/result_model.dart';
 import '../constants/api.dart';
 
 class ResultService {
+  Future<List<LotteryResult>> getAll() async {
+    final uri = Uri.parse(Api.baseUrl);
+    final res = await http.get(uri);
+
+    if (res.statusCode == 200) {
+      final List data = jsonDecode(res.body);
+      return data.map((e) => LotteryResult.fromJson(e)).toList();
+    }
+
+    throw Exception('API error');
+  }
+
   Future<LotteryResult> getOne({
     required String date,
     required String region,
