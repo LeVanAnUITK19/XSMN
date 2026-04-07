@@ -121,7 +121,10 @@ const run = async () => {
     console.log("📊 Data:", JSON.stringify(data, null, 2));
 
     if (!data.provinces.length) {
-      throw new Error("No data crawled");
+      data.provinces.push({
+        province: "Đang cập nhật",
+        full: { G8:["Chờ"], G7:["Chờ"], G6:["Chờ"], G5:["Chờ"], G4:["Chờ"], G3:["Chờ"], G2:["Chờ"], G1:["Chờ"], DB:["Chờ"] }
+      });
     }
 
     await sendToAPI(data);
