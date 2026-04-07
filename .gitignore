@@ -39,6 +39,7 @@ frontend/ios/Flutter/Generated.xcconfig
 *.iml
 *.ipr
 *.iws
+.test/
 
 # ========================
 # OS
