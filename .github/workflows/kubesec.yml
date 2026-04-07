@@ -2,7 +2,14 @@ name: Crawl_PUT
 
 on:
   schedule:
-    - cron: '0 10 * * *'  # 16h VN
+   # 16:30 VN (9:30 UTC) - Đang quay những giải cuối
+    - cron: '30 9 * * *'
+    
+    # 16:45 VN (9:45 UTC) - Thường đã có đầy đủ kết quả
+    - cron: '45 9 * * *'
+    
+    # 17:00 VN (10:00 UTC) - Chốt hạ bản lưu trữ cuối cùng
+    - cron: '0 10 * * *'
   workflow_dispatch: 
 
 jobs:
