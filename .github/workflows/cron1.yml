@@ -11,4 +11,4 @@ jobs:
     steps:
       - name: Ping Render
         run: |
-          curl -s https://xsmn.onrender.com/api/results > /dev/null
+          curl -s https://xsmn.onrender.com/api/results/health > /dev/null
