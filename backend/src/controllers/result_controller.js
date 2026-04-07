@@ -52,3 +52,16 @@ export const createResult = async (req, res) => {
   }
 };
 
+export const saveResult = async (req, res) => {
+  try {    
+    const { date, region } = req.body;
+    const updatedData = await Result.findByIdAndUpdate({ date, region }, req.body, { new: true });
+    if (!updatedData) return res.status(404).json({ error: "Result not found" });
+    res.json(updatedData);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  } 
+
+};
+
+
