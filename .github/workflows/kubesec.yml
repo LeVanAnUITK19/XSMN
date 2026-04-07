@@ -17,5 +17,6 @@ jobs:
           node-version: 20
 
       - run: npm install
-
-      - run: node crawl/crawlXSMN_PUT.js
+        working-directory: crawl        # <-- thêm dòng này
+      - run: node crawlXSMN_PUT.js      # <-- bỏ "crawl/" vì đã cd vào rồi
+        working-directory: crawl
