@@ -1,0 +1,22 @@
+name: Crawl_POST
+
+on:
+  schedule:
+    - cron: '0 18 * * *'  # 16h VN
+  workflow_dispatch: 
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm install
+        working-directory: crawl        # <-- thêm dòng này
+      - run: node crawlXSMN_POST.js      # <-- bỏ "crawl/" vì đã cd vào rồi
+        working-directory: crawl
