@@ -10,8 +10,9 @@ on:
     
     # 17:00 VN (10:00 UTC) - Chốt hạ bản lưu trữ cuối cùng
     
-    - cron: '30 10 * * *'
-    - cron: '45 10 * * *'
+    - cron: '30 9 * * *'
+    - cron: '45 9 * * *'
+    - cron: '0 10 * * *'
   workflow_dispatch: 
 
 jobs:
