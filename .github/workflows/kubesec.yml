@@ -5,10 +5,18 @@ on:
    # 16:30 VN (9:30 UTC) - Đang quay những giải cuối
     - cron: '0 8 * * *'
     # 16:45 VN (9:45 UTC) - Thường đã có đầy đủ kết quả
+    - cron: '10 8 * * *'
     - cron: '15 8 * * *'
     # 17:00 VN (10:00 UTC) - Chốt hạ bản lưu trữ cuối cùng
+    - cron: '20 8 * * *'
+    - cron: '25 8 * * *'
     - cron: '30 8 * * *'
+    - cron: '35 8 * * *'
+    - cron: '40 8 * * *'
     - cron: '45 8 * * *'
+    - cron: '50 8 * * *'
+    - cron: '55 8 * * *'
+    
     - cron: '0 9 * * *'
   workflow_dispatch: 
 
