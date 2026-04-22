@@ -36,7 +36,7 @@ class ResultViewModel extends ChangeNotifier {
     } catch (e) {
       error = 'Không thể tải dữ liệu: $e';
     }
-
+    await Future.delayed(const Duration(seconds: 1));
     isLoading = false;
     notifyListeners();
   }
@@ -57,6 +57,9 @@ class ResultViewModel extends ChangeNotifier {
       result = _cache[latest];
     }
   }
+
+  /// Lấy kết quả từ cache theo key ngày (yyyy-MM-dd), trả null nếu không có
+  LotteryResult? getCache(String key) => _cache[key];
 
   void loadByDate(DateTime date) {
     final key = DateFormat('yyyy-MM-dd').format(date);
