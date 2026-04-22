@@ -16,11 +16,15 @@ class ResultTable extends StatelessWidget {
     bool isHeader = false,
     bool isG8 = false,
     bool isDB = false,
-    double fontSize = 20,
+    double fontSize = 18,
     String background = 'white',
+    TextStyle? style, 
   }) {
-    double finalFontSize =
-      text == 'Đang cập nhật' ? 14 : fontSize;
+    double finalFontSize = text == 'Đang cập nhật' ? 14 : fontSize;
+    if(isHeader == false && this.provinces.length > 3) {
+      finalFontSize = 16;
+    }
+    
     return Container(
       alignment: Alignment.center,
       padding: const EdgeInsets.all(8),
@@ -30,12 +34,17 @@ class ResultTable extends StatelessWidget {
       child: Text(
         text,
         textAlign: TextAlign.center,
-        style: TextStyle(
-          fontSize: finalFontSize,
-          fontWeight: isHeader ? FontWeight.bold : FontWeight.w900,
-          backgroundColor: background == 'white' ? Colors.white : Colors.yellow.shade100,
-          color: isG8 || isDB ? Colors.red : Colors.black,
-        ),
+        style:
+            style ??
+            TextStyle(
+              // 👈 ưu tiên style truyền vào
+              fontSize: finalFontSize,
+              fontWeight: isHeader ? FontWeight.bold : FontWeight.w900,
+              backgroundColor: background == 'white'
+                  ? Colors.white
+                  : Colors.yellow.shade100,
+              color: isG8 || isDB ? Colors.red : Colors.black,
+            ),
       ),
     );
   }
@@ -44,25 +53,34 @@ class ResultTable extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        /// HEADER
-        Row(
-          children: [
-            Expanded(
-              flex: 2,
-              child: _cell('Giải', isHeader: true, fontSize: 14,background: "gray" )),
-            ...provinces.map(
-              (p) => Expanded(
-                flex: 4,
+        IntrinsicHeight(
+          child: Row(
+            children: [
+              Expanded(
+                flex: 2,
                 child: _cell(
-                  p.province,
+                  'Giải',
                   isHeader: true,
-                  fontSize: 14,
-                  background: "gray", // 👈 nhỏ hơn
+                  fontSize: 12,
+                  background: "gray",
                 ),
               ),
-            ),
-          ],
+              ...provinces.map(
+                (p) => Expanded(
+                  flex: 4,
+                  child: _cell(
+                    p.province,
+                    isHeader: true,
+                    fontSize: 14,
+                    background: "gray", // 👈 nhỏ hơn
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
+        /// HEADER
+       
 
         /// BODY
         Expanded(
@@ -78,7 +96,15 @@ class ResultTable extends StatelessWidget {
                     /// label (G8, G7...)
                     Expanded(
                       flex: 2,
-                      child: _cell(row['label'], isHeader: true)),
+                      child: _cell(
+                        row['label'],
+                        isHeader: true,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
 
                     /// values
                     ...row['values'].map<Widget>((v) {
@@ -88,7 +114,6 @@ class ResultTable extends StatelessWidget {
                           v,
                           isG8: row['label'] == 'G8',
                           isDB: row['label'] == 'DB',
-      
                         ),
                       );
                     }).toList(),

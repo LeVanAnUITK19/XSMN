@@ -16,7 +16,7 @@ class MyDrawer extends StatelessWidget {
             title: const Text('Xổ Số Miền Nam'),
             backgroundColor: Colors.white,
           ),
-          const Center(child: Text('Drawer Content')),
+          const Center(child: Text('version 1.0.0')),
         ],
       ),
     );
