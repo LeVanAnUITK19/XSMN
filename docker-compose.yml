@@ -1,0 +1,103 @@
+name: xsmn-stack
+
+services:
+  mongodb:
+    image: mongo:7
+    container_name: xsmn-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - app-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: xsmn-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks:
+      - app-net
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: xsmn-backend
+    restart: unless-stopped
+    environment:
+      PORT: 3000
+      MONGODB_CONNECTIONSTRING: mongodb://mongodb:27017/xsmn
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "3000:3000"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/api/results/health"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - app-net
+
+  crawl-put:
+    build:
+      context: ./crawl
+      dockerfile: Dockerfile
+    container_name: xsmn-crawl-put
+    environment:
+      API_URL: http://backend:3000/api/results
+    command: ["node", "crawlXSMN_PUT.js"]
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - app-net
+    profiles:
+      - crawler
+
+  crawl-post:
+    build:
+      context: ./crawl
+      dockerfile: Dockerfile
+    container_name: xsmn-crawl-post
+    environment:
+      API_URL: http://backend:3000/api/results
+    command: ["node", "crawlXSMN_POST.js"]
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - app-net
+    profiles:
+      - crawler
+
+networks:
+  app-net:
+    driver: bridge
+
+volumes:
+  mongo_data:
+  redis_data:
