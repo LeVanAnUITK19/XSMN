@@ -1,9 +1,8 @@
 FROM node:20-slim
 
-# Install Chrome dependencies for Puppeteer
+# Install Chromium and required runtime libs for Puppeteer
 RUN apt-get update && apt-get install -y \
     chromium \
-    curl \
     fonts-liberation \
     libappindicator3-1 \
     libasound2 \
@@ -29,11 +28,9 @@ ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
 COPY package*.json ./
-
 RUN npm ci --omit=dev
 
 COPY . .
 
-EXPOSE 3000
-
-CMD ["node", "server.js"]
+# Default command can be overridden by docker-compose
+CMD ["node", "crawlXSMN_PUT.js"]

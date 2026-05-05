@@ -129,6 +129,76 @@ flutter run
 - **Crawl** chạy qua GitHub Actions (`.github/workflows/`)
 - **Frontend** build Flutter web hoặc Android/iOS
 
+### CI/CD (GitHub Actions)
+
+File `.github/workflows/ci-cd.yml` chay tuan tu:
+
+1. **Test** — `npm ci` + `npm test` trong `backend` (matrix Node 18 / 20 / 22).
+2. **Docker** — build image tu `backend/Dockerfile`; tren nhanh `main` sau khi **push** thi **dang len** `ghcr.io/<owner>/<repo>` (tag `latest` + short SHA).
+3. **Deploy** (tuy chon) — neu da dat secret `RENDER_DEPLOY_HOOK_URL` tren GitHub, goi hook de Render khoi dong lai dich vu.
+
+Pull request: chi chay test + **build** image (khong push, khong deploy).
+
+Cau hinh Render: Dashboard service → **Deploy** → **Deploy Hook** → copy URL → GitHub repo → **Settings** → **Secrets and variables** → **Actions** → them `RENDER_DEPLOY_HOOK_URL`.
+
+Keo image ve may (sau khi da push len `main`):
+
+```bash
+docker pull ghcr.io/<owner>/<repo>:latest
+```
+
+---
+
+## Docker (nang cao)
+
+Du an da ho tro multi-container qua `docker-compose.yml`:
+
+- `backend`: REST API
+- `mongodb`: luu tru du lieu
+- `redis`: cache API
+- `crawl-put` / `crawl-post`: worker crawl (chay theo profile)
+
+### 1) Chay stack chinh (backend + mongo + redis)
+
+```bash
+docker compose up -d --build
+```
+
+Kiem tra:
+
+```bash
+docker compose ps
+curl http://localhost:3000/api/results/health
+```
+
+### 2) Chay crawler thu cong trong cung network Docker
+
+```bash
+# Upsert ket qua (PUT)
+docker compose --profile crawler run --rm crawl-put
+
+# Tao moi ket qua (POST)
+docker compose --profile crawler run --rm crawl-post
+```
+
+### 3) Dung va xoa stack
+
+```bash
+docker compose down
+```
+
+Neu muon xoa ca volume data:
+
+```bash
+docker compose down -v
+```
+
+### Ghi chu
+
+- Crawler dung bien moi truong `API_URL` (mac dinh van la endpoint Render neu khong set).
+- Trong Compose, `API_URL` duoc tro den `http://backend:3000/api/results` de goi noi bo qua service name.
+- `backend` co healthcheck va chi start sau khi `mongodb` + `redis` healthy.
+
 ---
 
 ## Ghi chú
