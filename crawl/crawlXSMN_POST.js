@@ -1,8 +1,21 @@
 import puppeteer from "puppeteer";
 
 const API_URL = process.env.API_URL || "https://xsmn.onrender.com/api/results";
+const HEALTH_URL = API_URL.replace("/results", "/results/health");
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+// Fix 1: Đánh thức Render trước khi crawl (tránh cold start timeout)
+const warmUpRender = async () => {
+  console.log("🔥 Warming up Render server...");
+  try {
+    await fetch(HEALTH_URL);
+    console.log("✅ Render is awake");
+  } catch (_) {
+    console.log("⏳ Render đang thức dậy, chờ 30s...");
+  }
+  await sleep(30000);
+};
 
 const crawlXSMN = async (date) => {
   const [y, m, d] = date.split("-");
@@ -10,23 +23,43 @@ const crawlXSMN = async (date) => {
   const url = `https://www.minhngoc.net.vn/ket-qua-xo-so/mien-nam/${targetDateStr}.html`;
 
   const browser = await puppeteer.launch({
-    headless: "new", // 🔥 GitHub Actions phải dùng cái này
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    headless: true,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      // Fix 2: Ẩn dấu hiệu bot để tránh bị website block
+      '--disable-blink-features=AutomationControlled',
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+    ],
   });
 
   const page = await browser.newPage();
 
+  // Fix 2: Giả lập trình duyệt thật hơn
+  await page.evaluateOnNewDocument(() => {
+    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+  });
+
   await page.setUserAgent(
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36'
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
   );
+
+  await page.setViewport({ width: 1280, height: 800 });
 
   console.log("👉 Crawling:", url);
 
   await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
 
-  await page.waitForSelector(".bkqmiennam", { timeout: 30000 });
-
-  await sleep(3000); // 🔥 tránh DOM chưa render xong
+  // Fix 3: Không crash khi web chưa có dữ liệu — trả về mảng rỗng
+  try {
+    await page.waitForSelector(".bkqmiennam", { timeout: 30000 });
+    await sleep(3000);
+  } catch (_) {
+    console.log("⚠️ Không tìm thấy .bkqmiennam — web chưa có dữ liệu hoặc bị block");
+    await browser.close();
+    return { date, region: "mien-nam", provinces: [] };
+  }
 
   const provinces = await page.evaluate((targetStr) => {
     const results = [];
@@ -71,25 +104,20 @@ const crawlXSMN = async (date) => {
 
   await browser.close();
 
-  return {
-    date,
-    region: "mien-nam",
-    provinces,
-  };
+  return { date, region: "mien-nam", provinces };
 };
 
-// 👉 gửi API + retry (quan trọng vì Render sleep)
+// Fix 4: Tăng retry lên 5 lần, chờ 30s giữa các lần (đủ cho Render cold start)
 const sendToAPI = async (data) => {
-  for (let i = 1; i <= 3; i++) {
+  for (let i = 1; i <= 5; i++) {
     try {
-      console.log(`🚀 Send attempt ${i}`);
+      console.log(`🚀 Send attempt ${i}/5`);
 
       const res = await fetch(API_URL, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
+        signal: AbortSignal.timeout(30000), // timeout 30s mỗi request
       });
 
       const text = await res.text();
@@ -99,27 +127,32 @@ const sendToAPI = async (data) => {
         console.log("✅ SUCCESS");
         return;
       }
+      console.log(`⚠️ Server trả về ${res.status}`);
     } catch (err) {
       console.log("❌ Error:", err.message);
     }
 
-    console.log("⏳ Retry in 10s...");
-    await sleep(10000);
+    if (i < 5) {
+      console.log("⏳ Retry in 30s...");
+      await sleep(30000);
+    }
   }
 
-  throw new Error("❌ Failed after 3 retries");
+  throw new Error("❌ Failed after 5 retries");
 };
 
-// 👉 chạy main
 const run = async () => {
   try {
-    // 👉 lấy ngày hôm nay
     const date = new Date().toLocaleDateString("sv-SE");
+    console.log("📅 Crawling date:", date);
+
+    // Đánh thức Render trước
+    await warmUpRender();
 
     const data = await crawlXSMN(date);
+    console.log(`📊 Crawled ${data.provinces.length} province(s)`);
 
-    console.log("📊 Data:", JSON.stringify(data, null, 2));
-
+    // Nếu chưa có dữ liệu → gửi placeholder để hiển thị "Đang cập nhật"
     if (!data.provinces.length) {
       data.provinces.push({
         province: "Đang cập nhật",

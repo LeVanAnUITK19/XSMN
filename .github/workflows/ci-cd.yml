@@ -47,7 +47,7 @@ jobs:
     name: Docker build${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && ' + push' || '' }} (GHCR)
     needs: test
     runs-on: ubuntu-latest
-    if: always() && needs.test.result == 'success'
+    if: needs.test.result == 'success' && github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
