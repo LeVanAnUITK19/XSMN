@@ -18,7 +18,7 @@ class Api {
       String url = "${_bases[idx]}$endpoint";
       try {
         print('📡 Đang thử kết nối: $url');
-        final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 3));
+        final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 5));
         
         // Nếu server sống (200-299) thì trả về luôn
         if (response.statusCode >= 200 && response.statusCode < 300) {

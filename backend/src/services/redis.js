@@ -1,4 +1,7 @@
 import Redis from 'ioredis';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 // Enable TLS only for Upstash cloud (rediss://) — not for local Redis (redis://)
 const isTLS = process.env.REDIS_URL?.startsWith('rediss://');

@@ -14,8 +14,8 @@ if (localPropertiesFile.exists()) {
     localPropertiesFile.inputStream().use { localProperties.load(it) }
 }
 
-val flutterVersionCode = localProperties.getProperty("flutter.versionCode") ?: "1"
-val flutterVersionName = localProperties.getProperty("flutter.versionName") ?: "1.0"
+val flutterVersionCode = localProperties.getProperty("flutter.versionCode") ?: "2"
+val flutterVersionName = localProperties.getProperty("flutter.versionName") ?: "1.0.2"
 
 // Lấy thông tin ký app từ key.properties
 val keystoreProperties = Properties()
@@ -45,8 +45,8 @@ android {
         applicationId = "com.myapp.kqxs.miennam" // THAY BẰNG PACKAGE NAME THẬT
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
-        versionCode = flutterVersionCode.toInt()
-        versionName = flutterVersionName
+        versionCode = 2
+        versionName = "1.0.2"
     }
 
     signingConfigs {
