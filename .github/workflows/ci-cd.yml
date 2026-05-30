@@ -1,4 +1,4 @@
-# CI/CD: test -> Docker build -> push GHCR -> deploy lên AWS EC2
+# CI/CD: test -> Docker image build -> push GHCR (main) -> optional Render deploy hook
 name: CI/CD
 
 on:
@@ -16,9 +16,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # ─────────────────────────────────────────
-  # JOB 1: Unit tests
-  # ─────────────────────────────────────────
   test:
     name: Test (Node ${{ matrix.node-version }})
     runs-on: ubuntu-latest
@@ -30,33 +27,37 @@ jobs:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
           cache: npm
           cache-dependency-path: backend/package-lock.json
 
-      - run: npm ci
-      - run: npm test
+      - name: Install dependencies
+        run: npm ci
 
-  # ─────────────────────────────────────────
-  # JOB 2: Build Docker image + push GHCR
-  # ─────────────────────────────────────────
+      - name: Run unit tests
+        run: npm test
+
   build-and-push:
-    name: Docker build + push (GHCR)
+    name: Docker build${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && ' + push' || '' }} (GHCR)
     needs: test
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    outputs:
-      image_tag: ${{ steps.meta.outputs.tags }}
+    if: needs.test.result == 'success' && github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: docker/setup-buildx-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - uses: docker/login-action@v3
+      - name: Log in to GitHub Container Registry
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -69,44 +70,33 @@ jobs:
           images: ghcr.io/${{ github.repository }}
           tags: |
             type=sha,format=short
-            type=raw,value=latest
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}
+            type=ref,event=pr
 
-      - name: Build and push
+      - name: Build and push image
         uses: docker/build-push-action@v6
         with:
           context: ./backend
           file: ./backend/Dockerfile
-          push: true
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # ─────────────────────────────────────────
-  # JOB 3: Deploy lên AWS EC2
-  # ─────────────────────────────────────────
   deploy:
-    name: Deploy to AWS EC2
+    name: Deploy (Render hook)
     needs: build-and-push
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ubuntu
-          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
-          script: |
-            cd /opt/xsmn
-
-            # Pull image mới nhất từ GHCR
-            docker pull ghcr.io/${{ github.repository }}:latest
-
-            # Cập nhật image trong compose và restart
-            docker compose up -d --pull always backend
-
-            # Dọn image cũ
-            docker image prune -f
-
-            echo "✅ Deployed ghcr.io/${{ github.repository }}:latest"
+      - name: Trigger Render deploy
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
+            echo "RENDER_DEPLOY_HOOK_URL not set — skipping remote deploy. Image is still on ghcr.io."
+            exit 0
+          fi
+          curl -fsS -X POST "$RENDER_DEPLOY_HOOK_URL"
+          echo "Deploy hook called OK."
