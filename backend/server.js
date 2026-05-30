@@ -5,6 +5,7 @@ import { connectDB } from './src/config/db.js';
 import resultRoutes from './src/routes/result_route.js';
 import register from './src/config/metrics.js';
 import { httpRequestCounter, httpRequestDuration } from './src/config/metrics.js';
+import { redisConnect } from './src/config/redis.js';
 
 dotenv.config();
 const app = express();
@@ -29,6 +30,9 @@ app.use((req, res, next) => {
 
 await connectDB(process.env.MONGODB_CONNECTIONSTRING)
   .then(() => console.log('DB connected'))
+  .catch(err => console.error(err));
+await redisConnect()
+  .then(() => console.log('Redis connected'))
   .catch(err => console.error(err));
 
 app.use('/api/results', resultRoutes);

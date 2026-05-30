@@ -1,0 +1,12 @@
+services:
+  backend:
+    image: levanan2k6/xsmn-backend:v1
+    container_name: backend
+
+    ports:
+      - "3000:3000"
+
+    env_file:
+      - .env
+
+    restart: always
