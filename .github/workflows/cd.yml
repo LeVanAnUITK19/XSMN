@@ -9,6 +9,7 @@
 #   1. build-and-push — build Docker image từ backend/Dockerfile, đẩy lên GHCR
 #      (tag latest + short commit SHA)
 #   2. deploy — gọi Render deploy hook (nếu secret RENDER_DEPLOY_HOOK_URL đã cấu hình)
+#   3. dora — push DORA metrics lên Pushgateway (nếu secret DORA_PUSHGATEWAY_URL đã cấu hình)
 #
 # PR vào main: chỉ CI chạy — CD không chạy.
 name: CD
@@ -98,3 +99,28 @@ jobs:
           fi
           curl -fsS -X POST "$RENDER_DEPLOY_HOOK_URL"
           echo "Deploy hook called OK."
+
+      - name: Checkout for DORA scripts
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Push DORA deploy metrics
+        env:
+          DORA_PUSHGATEWAY_URL: ${{ secrets.DORA_PUSHGATEWAY_URL }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_REF_NAME: main
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            CI_START="${{ github.event.workflow_run.created_at }}"
+            CI_EPOCH=$(date -d "${CI_START}" +%s 2>/dev/null || echo "0")
+            NOW_EPOCH=$(date +%s)
+            if [ "$CI_EPOCH" != "0" ]; then
+              export LEAD_TIME_SECONDS=$((NOW_EPOCH - CI_EPOCH))
+            else
+              export LEAD_TIME_SECONDS=360
+            fi
+          else
+            export LEAD_TIME_SECONDS=360
+          fi
+          bash scripts/push-dora-metrics.sh deploy_success

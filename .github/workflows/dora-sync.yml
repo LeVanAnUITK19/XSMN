@@ -1,0 +1,32 @@
+# Sync DORA metrics from GitHub repo history (real data, not seed).
+# Chay tay hoac theo lich — can secret DORA_PUSHGATEWAY_URL neu Pushgateway khong public.
+name: DORA Sync
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+  pull-requests: read
+
+jobs:
+  sync:
+    name: Sync GitHub history → Pushgateway
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Sync DORA metrics from GitHub
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DORA_PUSHGATEWAY_URL: ${{ secrets.DORA_PUSHGATEWAY_URL }}
+        run: |
+          if [ -z "$DORA_PUSHGATEWAY_URL" ]; then
+            echo "DORA_PUSHGATEWAY_URL not set — skip push (chay sync local thay the)."
+            exit 0
+          fi
+          bash scripts/sync-dora-from-github.sh --replace-all

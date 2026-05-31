@@ -163,6 +163,58 @@ Keo image ve may (sau khi da push len `main`):
 docker pull ghcr.io/<owner>/<repo>:latest
 ```
 
+### DORA Metrics (Prometheus + Grafana)
+
+Theo doi 4 chi so DORA tu dong:
+
+| Thanh phan | File / URL |
+|------------|------------|
+| Push metrics tu CI/CD | `scripts/push-dora-metrics.sh`, secret `DORA_PUSHGATEWAY_URL` |
+| Pushgateway | `backend/docker-compose.monitoring.yml` — port **9091** |
+| Alert rules | `backend/prometheus/dora-alerts.yml` |
+| Dashboard DORA | `backend/grafana/dashboards/dora.json` |
+| Dashboard app | `backend/grafana/dashboards/xsmn.json` |
+| Bao cao phan tich | [DORA.md](./DORA.md) |
+
+**Demo local — dữ liệu THẬT từ GitHub (không seed):**
+
+```powershell
+cd backend
+docker compose -f docker-compose.monitoring.yml up -d
+cd ..
+# Can GITHUB_TOKEN (PAT scope repo) hoac da chay: gh auth login
+$env:GITHUB_TOKEN = "ghp_..."
+powershell -ExecutionPolicy Bypass -File .\scripts\sync-dora-from-github.ps1 -ReplaceAll
+```
+
+Tren Grafana, series hien `pr-6`, `pr-20`... — merge PR that tu repo.
+
+**Chi dung seed khi khong co token GitHub:** `scripts/seed-dora-demo.ps1`
+
+Mo trinh duyet:
+
+| Dich vu | URL | Dang nhap |
+|---------|-----|-----------|
+| Grafana | http://localhost:3001 | admin / admin |
+| Prometheus | http://localhost:9090 | — |
+| Alerts | http://localhost:9090/alerts | — |
+| Pushgateway | http://localhost:9091 | — |
+
+Trong Grafana: **Dashboards → XSMN → XSMN DORA Metrics** (4 panel chinh + charts).
+
+**Noi dung demo truoc giám khao (5–7 phut):**
+
+1. Giai thich 4 metric DORA tren dashboard (Frequency, Lead Time, MTTR, CFR).
+2. Mo Prometheus → **Alerts** — chi 4 rule DORA.
+3. Chi `scripts/seed-dora-demo.sh` — du lieu tu lich su that (24 deploy, CFR 8.3%).
+4. (Tu chon) Merge PR vao `main` — CD push metric moi len Pushgateway (can expose Pushgateway qua ngrok + secret GitHub).
+
+**Ket noi CI/CD voi Pushgateway (production demo):**
+
+1. Chay Pushgateway tren may co IP public (hoac [ngrok](https://ngrok.com) port 9091).
+2. GitHub repo → Settings → Secrets → `DORA_PUSHGATEWAY_URL` = `https://<host>:9091`.
+3. Moi lan CD thanh cong / CI fail tren `main` → metric tu dong cap nhat Grafana.
+
 ---
 
 ## Docker (nang cao)

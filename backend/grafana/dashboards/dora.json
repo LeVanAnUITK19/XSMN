@@ -1,0 +1,268 @@
+{
+  "title": "XSMN DORA Metrics",
+  "uid": "xsmn-dora",
+  "tags": ["xsmn", "dora", "devops"],
+  "timezone": "Asia/Ho_Chi_Minh",
+  "refresh": "30s",
+  "time": { "from": "now-7d", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Deployment Frequency (7 ngày)",
+      "description": "Số lần deploy thành công trong 7 ngày qua.",
+      "type": "stat",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "editorMode": "code",
+          "expr": "count(xsmn_dora_deployment_timestamp_seconds > (time() - 604800))",
+          "instant": true,
+          "range": false,
+          "legendFormat": "deploys/7d",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "green", "value": 3 }
+            ]
+          }
+        }
+      },
+      "options": { "colorMode": "background", "graphMode": "none", "textMode": "auto" }
+    },
+    {
+      "id": 2,
+      "title": "Lead Time for Changes (TB)",
+      "description": "Thời gian trung bình từ CI start đến deploy (giây). Elite: < 1 giờ",
+      "type": "stat",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "editorMode": "code",
+          "expr": "avg(xsmn_dora_lead_time_seconds)",
+          "instant": true,
+          "range": false,
+          "legendFormat": "lead time",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 600 },
+              { "color": "red", "value": 3600 }
+            ]
+          }
+        }
+      },
+      "options": { "colorMode": "background", "graphMode": "area", "textMode": "auto" }
+    },
+    {
+      "id": 3,
+      "title": "MTTR — Mean Time To Restore (TB)",
+      "description": "Thời gian khôi phục trung bình sau sự cố. Elite: < 1 giờ",
+      "type": "stat",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "editorMode": "code",
+          "expr": "avg(xsmn_dora_recovery_time_seconds)",
+          "instant": true,
+          "range": false,
+          "legendFormat": "MTTR",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1800 },
+              { "color": "red", "value": 3600 }
+            ]
+          }
+        }
+      },
+      "options": { "colorMode": "background", "graphMode": "area", "textMode": "auto" }
+    },
+    {
+      "id": 4,
+      "title": "Change Failure Rate",
+      "description": "Tỷ lệ thay đổi gây lỗi (%). Elite: 0–15%",
+      "type": "gauge",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "editorMode": "code",
+          "expr": "100 * count(xsmn_dora_deployment_event{status=\"failure\"}) / clamp_min(count(xsmn_dora_deployment_event{status=\"success\"}) + count(xsmn_dora_deployment_event{status=\"failure\"}), 1)",
+          "instant": true,
+          "range": false,
+          "legendFormat": "CFR %",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 15 },
+              { "color": "red", "value": 30 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "Deployments theo thời gian",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 6, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "editorMode": "code",
+          "expr": "count(xsmn_dora_deployment_event{status=\"success\"})",
+          "instant": false,
+          "range": true,
+          "legendFormat": "Success (total tracked)",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "editorMode": "code",
+          "expr": "count(xsmn_dora_deployment_event{status=\"failure\"})",
+          "instant": false,
+          "range": true,
+          "legendFormat": "Failure (total tracked)",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "lineWidth": 2, "fillOpacity": 15 },
+          "unit": "none"
+        }
+      }
+    },
+    {
+      "id": 6,
+      "title": "Lead Time từng deploy (giây)",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 6, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "editorMode": "code",
+          "expr": "xsmn_dora_lead_time_seconds",
+          "instant": false,
+          "range": true,
+          "legendFormat": "{{instance}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": { "lineWidth": 2, "drawStyle": "points", "pointSize": 6 }
+        }
+      }
+    },
+    {
+      "id": 7,
+      "title": "Tổng deploy thành công (all time tracked)",
+      "type": "stat",
+      "gridPos": { "x": 0, "y": 14, "w": 8, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "editorMode": "code",
+          "expr": "count(xsmn_dora_deployment_event{status=\"success\"})",
+          "instant": true,
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "green" }
+        }
+      }
+    },
+    {
+      "id": 8,
+      "title": "Tổng deploy thất bại (all time tracked)",
+      "type": "stat",
+      "gridPos": { "x": 8, "y": 14, "w": 8, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "editorMode": "code",
+          "expr": "count(xsmn_dora_deployment_event{status=\"failure\"})",
+          "instant": true,
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "red" }
+        }
+      }
+    },
+    {
+      "id": 9,
+      "title": "Recovery events (MTTR samples)",
+      "type": "stat",
+      "gridPos": { "x": 16, "y": 14, "w": 8, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "editorMode": "code",
+          "expr": "count(xsmn_dora_recovery_event)",
+          "instant": true,
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "blue" }
+        }
+      }
+    }
+  ],
+  "schemaVersion": 39
+}

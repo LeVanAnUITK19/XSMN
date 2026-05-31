@@ -1,8 +1,48 @@
 # DORA Metrics — XSMN Project
 
 > **DORA** (DevOps Research and Assessment) là 4 chỉ số đo lường hiệu quả vận hành phần mềm,
-> được Google/DORA Research đề xuất. Số liệu bên dưới được tính từ lịch sử thực tế
-> của repository `LeVanAnUITK19/XSMN` trong quá trình phát triển đồ án.
+> được Google/DORA Research đề xuất.
+
+## Thu thập tự động (Prometheus + Grafana)
+
+Pipeline DORA trong repo:
+
+```
+GitHub Actions (CI/CD)
+    │  push metrics
+    ▼
+Pushgateway :9091
+    │  scrape
+    ▼
+Prometheus :9090  ──►  Alert rules (dora-alerts.yml)  ──►  Alertmanager :9093
+    │
+    ▼
+Grafana :3001  ──►  Dashboard "XSMN DORA Metrics"
+```
+
+| Metric Prometheus | Nguồn | Ý nghĩa DORA |
+|-------------------|--------|----------------|
+| `xsmn_dora_deployment_event{status="success"}` | Merged PR (`pr-*`) + CD live | Deployment Frequency |
+| `xsmn_dora_lead_time_seconds` | PR created → merged (`pr-*`) + CD live | Lead Time for Changes |
+| `xsmn_dora_recovery_time_seconds` | Failed run → next success (`recovery-run-*`) | MTTR |
+| `xsmn_dora_deployment_event{status="failure"}` | Failed Actions run (`run-*`) + CI live | Change Failure Rate |
+
+**Nguồn dữ liệu (không seed):**
+
+| Cách | Script / workflow | Instance label |
+|------|-------------------|----------------|
+| **Lịch sử GitHub (khuyến nghị demo)** | `scripts/sync-dora-from-github.ps1` | `pr-20`, `run-9847362` |
+| **Realtime sau mỗi deploy** | `ci.yml` / `cd.yml` + secret `DORA_PUSHGATEWAY_URL` | GitHub Run ID |
+| ~~Seed giả lập~~ | `seed-dora-demo.ps1` (chỉ dự phòng) | `seed-success-*` |
+
+**Alerts** (`backend/prometheus/dora-alerts.yml`):
+
+- `DORA_HighChangeFailureRate` — CFR > 15%
+- `DORA_SlowLeadTime` — lead time TB > 1 giờ
+- `DORA_NoRecentDeployments` — không deploy trong 14 ngày
+- `DORA_SlowRecovery` — MTTR TB > 1 giờ
+
+Phần dưới ghi **phân tích định tính** từ lịch sử GitHub thực tế (đối chiếu với dashboard).
 
 ---
 
@@ -142,8 +182,29 @@ Change Failure Rate  ░░░░░░░░░░░░░░░░░░░�
 - **Tăng Deployment Frequency:** Áp dụng feature flags để deploy nhỏ hơn, thường xuyên hơn
 - **Giảm Lead Time:** Thêm cache Docker layer để giảm build time từ 3 phút xuống < 1 phút
 - **Giảm Change Failure Rate:** Thêm integration test và staging environment trước khi lên production
+- **Theo dõi realtime:** Dashboard Grafana DORA + alerts Prometheus (đã triển khai — xem README mục Demo DORA)
 
 ---
+
+## Demo nhanh (local)
+
+```bash
+cd backend
+docker compose -f docker-compose.monitoring.yml up -d
+cd ..
+bash scripts/seed-dora-demo.sh
+# Grafana: http://localhost:3001 (admin/admin) → Dashboards → XSMN → XSMN DORA Metrics
+# Prometheus alerts: http://localhost:9090/alerts
+```
+
+Ghi metric thủ công sau sự cố (MTTR):
+
+```bash
+export DORA_PUSHGATEWAY_URL=http://localhost:9091
+export MTTR_SECONDS=1680
+export DORA_INSTANCE=incident-manual-1
+bash scripts/push-dora-metrics.sh recovery
+```
 
 *Số liệu được tính từ GitHub repository history: `LeVanAnUITK19/XSMN`*
 *Ngày tính: 23/05/2026*

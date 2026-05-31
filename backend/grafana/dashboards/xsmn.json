@@ -11,7 +11,7 @@
       "title": "HTTP Requests Total",
       "type": "timeseries",
       "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
           "expr": "rate(http_requests_total[1m])",
@@ -36,7 +36,7 @@
       "title": "Redis Cache Hit/Miss",
       "type": "piechart",
       "gridPos": { "x": 12, "y": 0, "w": 6, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
           "expr": "redis_cache_operations_total",
@@ -54,7 +54,7 @@
       "title": "Memory Usage (MB)",
       "type": "gauge",
       "gridPos": { "x": 18, "y": 0, "w": 6, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
           "expr": "process_resident_memory_bytes / 1024 / 1024",
@@ -83,7 +83,7 @@
       "title": "HTTP Request Duration (p99)",
       "type": "timeseries",
       "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
           "expr": "histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))",
@@ -108,7 +108,7 @@
       "title": "Cache Hit Rate %",
       "type": "stat",
       "gridPos": { "x": 12, "y": 8, "w": 6, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
           "expr": "redis_cache_operations_total{result='hit'} / (redis_cache_operations_total{result='hit'} + redis_cache_operations_total{result='miss'}) * 100",
@@ -136,7 +136,7 @@
       "title": "Node.js CPU Usage",
       "type": "timeseries",
       "gridPos": { "x": 18, "y": 8, "w": 6, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
           "expr": "rate(process_cpu_seconds_total[1m]) * 100",
