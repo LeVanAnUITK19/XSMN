@@ -131,13 +131,29 @@ flutter run
 
 ### CI/CD (GitHub Actions)
 
-File `.github/workflows/ci-cd.yml` chay tuan tu:
+Hai workflow tach biet:
 
-1. **Test** — `npm ci` + `npm test` trong `backend` (matrix Node 18 / 20 / 22).
-2. **Docker** — build image tu `backend/Dockerfile`; tren nhanh `main` sau khi **push** thi **dang len** `ghcr.io/<owner>/<repo>` (tag `latest` + short SHA).
-3. **Deploy** (tuy chon) — neu da dat secret `RENDER_DEPLOY_HOOK_URL` tren GitHub, goi hook de Render khoi dong lai dich vu.
+| File | Vai tro | Trigger |
+|------|---------|---------|
+| `.github/workflows/ci.yml` | **CI** — test backend (matrix Node 18 / 20 / 22) | PR vao `main`, push len `main` |
+| `.github/workflows/cd.yml` | **CD** — build Docker, push GHCR, deploy Render | Sau khi CI pass tren `main` (push), hoac `workflow_dispatch` |
 
-Pull request: chi chay test + **build** image (khong push, khong deploy).
+**Luong khi mo Pull Request:**
+
+```
+PR -> CI (test x3 Node) -> xong (khong co CD)
+```
+
+**Luong khi push / merge len main:**
+
+```
+push main -> CI (test) -> pass -> CD (build image -> push ghcr.io -> Render hook)
+```
+
+Chi tiet CD:
+
+1. **build-and-push** — build tu `backend/Dockerfile`, dang len `ghcr.io/<owner>/<repo>` (tag `latest` + short SHA).
+2. **deploy** (tuy chon) — neu da dat secret `RENDER_DEPLOY_HOOK_URL`, goi hook de Render khoi dong lai dich vu.
 
 Cau hinh Render: Dashboard service → **Deploy** → **Deploy Hook** → copy URL → GitHub repo → **Settings** → **Secrets and variables** → **Actions** → them `RENDER_DEPLOY_HOOK_URL`.
 
