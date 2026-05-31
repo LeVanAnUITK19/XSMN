@@ -56,3 +56,21 @@ jobs:
 
       - name: Run unit tests
         run: npm test
+
+  dora-report:
+    name: DORA — report CI failure (main only)
+    needs: test
+    if: always() && github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        if: needs.test.result == 'failure'
+        uses: actions/checkout@v4
+
+      - name: Push change-failure metric
+        if: needs.test.result == 'failure'
+        env:
+          DORA_PUSHGATEWAY_URL: ${{ secrets.DORA_PUSHGATEWAY_URL }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+        run: bash scripts/push-dora-metrics.sh deploy_failure

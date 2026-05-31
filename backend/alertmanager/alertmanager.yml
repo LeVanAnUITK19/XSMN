@@ -1,0 +1,17 @@
+# Alertmanager — demo: hiển thị alerts, ghi log (có thể mở rộng Slack/email sau)
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: demo-log
+  group_by: [alertname, category]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+receivers:
+  - name: demo-log
+    webhook_configs:
+      - url: http://127.0.0.1:65535/
+        send_resolved: true
+        # URL không tồn tại — alerts vẫn hiển thị trên Prometheus/Grafana UI để demo

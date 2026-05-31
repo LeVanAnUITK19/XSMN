@@ -1,0 +1,52 @@
+# DORA alerting rules — evaluated by Prometheus
+groups:
+  - name: dora
+    interval: 1m
+    rules:
+      - alert: DORA_HighChangeFailureRate
+        expr: |
+          (
+            100 * count(xsmn_dora_deployment_event{status="failure"})
+            / clamp_min(
+                count(xsmn_dora_deployment_event{status="success"})
+                + count(xsmn_dora_deployment_event{status="failure"}),
+                1
+              )
+          ) > 15
+        for: 5m
+        labels:
+          severity: warning
+          category: dora
+        annotations:
+          summary: "DORA Change Failure Rate > 15%"
+          description: "Tỷ lệ deploy thất bại vượt ngưỡng Elite DORA (15%). Kiểm tra GitHub Actions và logs deploy."
+
+      - alert: DORA_SlowLeadTime
+        expr: avg(xsmn_dora_lead_time_seconds) > 3600
+        for: 10m
+        labels:
+          severity: warning
+          category: dora
+        annotations:
+          summary: "DORA Lead Time > 1 giờ"
+          description: "Thời gian từ commit đến production trung bình vượt ngưỡng Elite (< 1 giờ). Tối ưu pipeline CI/CD."
+
+      - alert: DORA_NoRecentDeployments
+        expr: count(xsmn_dora_deployment_timestamp_seconds > (time() - 1209600)) == 0
+        for: 30m
+        labels:
+          severity: info
+          category: dora
+        annotations:
+          summary: "Không có deployment trong 14 ngày"
+          description: "Deployment Frequency thấp — không ghi nhận deploy mới trong 2 tuần qua."
+
+      - alert: DORA_SlowRecovery
+        expr: avg(xsmn_dora_recovery_time_seconds) > 3600
+        for: 5m
+        labels:
+          severity: warning
+          category: dora
+        annotations:
+          summary: "DORA MTTR > 1 giờ"
+          description: "Thời gian khôi phục sau sự cố trung bình vượt ngưỡng Elite."
