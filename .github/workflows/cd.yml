@@ -1,62 +1,62 @@
-# CI/CD: test -> Docker image build -> push GHCR (main) -> optional Render deploy hook
-name: CI/CD
+# CD — Continuous Delivery / Deployment
+#
+# Khi nào chạy:
+#   - Sau khi workflow "CI" hoàn thành THÀNH CÔNG trên nhánh main
+#   - Chỉ khi sự kiện gốc là push lên main (KHÔNG chạy sau PR)
+#   - Có thể chạy tay: Actions → CD → Run workflow
+#
+# Việc gì xảy ra (tuần tự):
+#   1. build-and-push — build Docker image từ backend/Dockerfile, đẩy lên GHCR
+#      (tag latest + short commit SHA)
+#   2. deploy — gọi Render deploy hook (nếu secret RENDER_DEPLOY_HOOK_URL đã cấu hình)
+#
+# PR vào main: chỉ CI chạy — CD không chạy.
+name: CD
 
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
   packages: write
 
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: cd-main
+  cancel-in-progress: false
 
 jobs:
-  test:
-    name: Test (Node ${{ matrix.node-version }})
+  gate:
+    name: Verify CI passed (push to main)
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        node-version: [18.x, 20.x, 22.x]
-    defaults:
-      run:
-        working-directory: backend
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_branch == 'main'
+      )
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ matrix.node-version }}
-          cache: npm
-          cache-dependency-path: backend/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run unit tests
-        run: npm test
+      - name: CI gate OK
+        run: echo "CI passed on main — proceeding to build and deploy."
 
   build-and-push:
-    name: Docker build${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && ' + push' || '' }} (GHCR)
-    needs: test
+    name: Docker build + push (GHCR)
+    needs: gate
     runs-on: ubuntu-latest
-    if: needs.test.result == 'success' && github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to GitHub Container Registry
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -70,15 +70,14 @@ jobs:
           images: ghcr.io/${{ github.repository }}
           tags: |
             type=sha,format=short
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}
-            type=ref,event=pr
+            type=raw,value=latest
 
       - name: Build and push image
         uses: docker/build-push-action@v6
         with:
           context: ./backend
           file: ./backend/Dockerfile
-          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
@@ -88,7 +87,6 @@ jobs:
     name: Deploy (Render hook)
     needs: build-and-push
     runs-on: ubuntu-latest
-    if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - name: Trigger Render deploy
         env:
