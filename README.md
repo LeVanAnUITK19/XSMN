@@ -1,3 +1,5 @@
+Hiiiiiii
+
 # 🎰 Lottery App - Xổ Số Miền Nam
 
 Ứng dụng tra cứu kết quả xổ số miền Nam theo thời gian thực, gồm 3 thành phần: **Backend API**, **Crawl Service** và **Frontend Flutter**.
