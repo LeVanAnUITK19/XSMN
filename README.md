@@ -150,6 +150,48 @@ PR -> CI (test x3 Node) -> xong (khong co CD)
 push main -> CI (test) -> pass -> CD (build image -> push ghcr.io -> Render hook)
 ```
 
+flowchart TB
+  subgraph triggers [Trigger]
+    PR[PR vào main]
+    Push[Push main]
+    CronCrawl[Cron crawl]
+    CronDORA[Cron 6h DORA]
+    Manual[workflow_dispatch]
+  end
+
+  subgraph ci [ci.yml]
+    Test[Test Node 18/20/22]
+    DoraFail[DORA deploy_failure nếu test fail]
+  end
+
+  subgraph cd [cd.yml]
+    Gate[Gate: CI success + push main]
+    Build[Docker → GHCR]
+    Render[Render deploy hook]
+    DoraOk[DORA deploy_success]
+  end
+
+  subgraph crawl [kubesec.yml / kubesec1.yml]
+    POST[crawlXSMN_POST.js]
+    PUT[crawlXSMN_PUT.js]
+  end
+
+  subgraph dora [dora-sync.yml]
+    Sync[sync-dora-from-github.sh]
+  end
+
+  PR --> Test
+  Push --> Test
+  Test -->|pass + push main| Gate
+  Test -->|fail + push main| DoraFail
+  Gate --> Build --> Render --> DoraOk
+  Manual --> Gate
+  CronCrawl --> POST
+  CronCrawl --> PUT
+  CronDORA --> Sync
+  Manual --> Sync
+
+
 Chi tiet CD:
 
 1. **build-and-push** — build tu `backend/Dockerfile`, dang len `ghcr.io/<owner>/<repo>` (tag `latest` + short SHA).
