@@ -209,7 +209,7 @@ Trong Grafana: **Dashboards → XSMN → XSMN DORA Metrics** (4 panel chinh + ch
 
 1. Giai thich 4 metric DORA tren dashboard (Frequency, Lead Time, MTTR, CFR).
 2. Mo Prometheus → **Alerts** — chi 4 rule DORA.
-3. Chi `scripts/seed-dora-demo.sh` — du lieu tu lich su that (24 deploy, CFR 8.3%).
+3. Chay `scripts/sync-dora-from-github.ps1 -ReplaceAll` — du lieu that tu GitHub (merged PR + failed CI/PR). CFR/MTTR hien tren Grafana; chi dung `seed-dora-demo` khi khong co token.
 4. (Tu chon) Merge PR vao `main` — CD push metric moi len Pushgateway (can expose Pushgateway qua ngrok + secret GitHub).
 
 **Ket noi CI/CD voi Pushgateway (production demo):**
