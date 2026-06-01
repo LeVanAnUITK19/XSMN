@@ -4,7 +4,7 @@
   "tags": ["xsmn", "dora", "devops"],
   "timezone": "Asia/Ho_Chi_Minh",
   "refresh": "30s",
-  "time": { "from": "now-7d", "to": "now" },
+  "time": { "from": "now-90d", "to": "now" },
   "panels": [
     {
       "id": 1,
@@ -94,6 +94,7 @@
       "fieldConfig": {
         "defaults": {
           "unit": "s",
+          "noValue": "0",
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -117,7 +118,7 @@
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
           "editorMode": "code",
-          "expr": "100 * count(xsmn_dora_deployment_event{status=\"failure\"}) / clamp_min(count(xsmn_dora_deployment_event{status=\"success\"}) + count(xsmn_dora_deployment_event{status=\"failure\"}), 1)",
+          "expr": "100 * (count(xsmn_dora_deployment_event{status=\"failure\"}) or on() vector(0)) / clamp_min(count(xsmn_dora_deployment_event{status=\"success\"}) + (count(xsmn_dora_deployment_event{status=\"failure\"}) or on() vector(0)), 1)",
           "instant": true,
           "range": false,
           "legendFormat": "CFR %",
@@ -159,7 +160,7 @@
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
           "editorMode": "code",
-          "expr": "count(xsmn_dora_deployment_event{status=\"failure\"})",
+          "expr": "count(xsmn_dora_deployment_event{status=\"failure\"}) or on() vector(0)",
           "instant": false,
           "range": true,
           "legendFormat": "Failure (total tracked)",
@@ -183,7 +184,7 @@
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
           "editorMode": "code",
-          "expr": "xsmn_dora_lead_time_seconds",
+          "expr": "xsmn_dora_lead_time_seconds{instance=~\"pr-.*\"}",
           "instant": false,
           "range": true,
           "legendFormat": "{{instance}}",
@@ -229,7 +230,7 @@
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
           "editorMode": "code",
-          "expr": "count(xsmn_dora_deployment_event{status=\"failure\"})",
+          "expr": "count(xsmn_dora_deployment_event{status=\"failure\"}) or on() vector(0)",
           "instant": true,
           "range": false,
           "refId": "A"
@@ -237,6 +238,7 @@
       ],
       "fieldConfig": {
         "defaults": {
+          "noValue": "0",
           "color": { "mode": "fixed", "fixedColor": "red" }
         }
       }
@@ -251,7 +253,7 @@
         {
           "datasource": { "type": "prometheus", "uid": "prometheus" },
           "editorMode": "code",
-          "expr": "count(xsmn_dora_recovery_event)",
+          "expr": "count(xsmn_dora_recovery_event) or on() vector(0)",
           "instant": true,
           "range": false,
           "refId": "A"
@@ -259,6 +261,7 @@
       ],
       "fieldConfig": {
         "defaults": {
+          "noValue": "0",
           "color": { "mode": "fixed", "fixedColor": "blue" }
         }
       }

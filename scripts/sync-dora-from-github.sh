@@ -45,6 +45,7 @@ if [ "$REPLACE_ALL" = true ]; then
   curl -fsS -X DELETE "${PUSHGATEWAY_URL%/}/metrics/job/xsmn-dora" 2>/dev/null || true
 fi
 
+# Merged PRs → success
 page=1
 while true; do
   prs=$(api "/repos/${REPO}/pulls?state=closed&base=main&per_page=100&page=${page}")
@@ -72,8 +73,11 @@ EOF
   page=$((page + 1))
 done
 
-runs=$(api "/repos/${REPO}/actions/runs?branch=main&per_page=100")
-echo "$runs" | jq -c '.workflow_runs[] | select(.conclusion=="failure" and .event=="push")' | while read -r run; do
+# All runs — failures on main + per merged PR head_sha
+runs=$(api "/repos/${REPO}/actions/runs?per_page=100")
+fail_main=$(echo "$runs" | jq -c '.workflow_runs[] | select(.conclusion=="failure" and .head_branch=="main")')
+echo "$fail_main" | while read -r run; do
+  [ -z "$run" ] && continue
   id=$(echo "$run" | jq -r '.id')
   updated=$(echo "$run" | jq -r '.updated_at')
   ts=$(to_unix "$updated")
@@ -86,4 +90,4 @@ EOF
 )"
 done
 
-echo "DORA sync complete."
+echo "DORA sync complete (bash: PR-level failures — use sync-dora-from-github.ps1 for full MTTR on Windows)."

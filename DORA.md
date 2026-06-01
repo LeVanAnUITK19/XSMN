@@ -31,7 +31,7 @@ Grafana :3001  ──►  Dashboard "XSMN DORA Metrics"
 
 | Cách | Script / workflow | Instance label |
 |------|-------------------|----------------|
-| **Lịch sử GitHub (khuyến nghị demo)** | `scripts/sync-dora-from-github.ps1` | `pr-20`, `run-9847362` |
+| **Lịch sử GitHub (khuyến nghị demo)** | `scripts/sync-dora-from-github.ps1` | `pr-20`, `run-<id>`, `pr-fail-23-<id>` |
 | **Realtime sau mỗi deploy** | `ci.yml` / `cd.yml` + secret `DORA_PUSHGATEWAY_URL` | GitHub Run ID |
 | ~~Seed giả lập~~ | `seed-dora-demo.ps1` (chỉ dự phòng) | `seed-success-*` |
 
