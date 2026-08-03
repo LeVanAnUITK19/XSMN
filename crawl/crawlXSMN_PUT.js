@@ -19,7 +19,7 @@ const warmUpRender = async () => {
 
 const crawlXSMN = async (date) => {
   const [y, m, d] = date.split("-");
-  const targetDateStr = `${d}-${m}-${y}`;
+  const targetDateStr = `02-08-2026`;
   const url = `https://www.minhngoc.net.vn/ket-qua-xo-so/mien-nam/${targetDateStr}.html`;
 
   const browser = await puppeteer.launch({
