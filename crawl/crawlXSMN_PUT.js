@@ -143,7 +143,7 @@ const sendToAPI = async (data) => {
 
 const run = async () => {
   try {
-    const date = new Date().toLocaleDateString("sv-SE");
+    const date = '02-08-2026';
     console.log("📅 Crawling date:", date);
 
     // Đánh thức Render trước
