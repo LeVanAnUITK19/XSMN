@@ -2,43 +2,69 @@ import Result from "../models/results.js";
 import { saveResult as saveResultService } from "../services/saveResult.js";
 import redis from "../services/redis.js";
 
+// ── Cache keys ────────────────────────────────────────────────────
+const CACHE_KEY     = 'results:all:p1:l20'; // bao gồm page+limit để tránh stale cache
+const CACHE_TTL     = 60 * 2;               // 2 phút — có thể update
 
+const filterCacheKey = (params) =>
+  `results:filter:${JSON.stringify(params)}`;
 
-const CACHE_KEY = 'results:all';
-const CACHE_TTL = 60 * 2;
+const FILTER_CACHE_TTL      = 60 * 5;  // 5 phút — không có date cụ thể
+const FILTER_DATE_CACHE_TTL = 60 * 60; // 60 phút — có date cụ thể (data cố định)
 
-// Cache key cho filter
-const filterCacheKey = (region, date) => `results:filter:${region || 'all'}:${date || 'all'}`;
-const FILTER_CACHE_TTL = 60 * 5;      // 5 phút — query không có date (có thể update)
-const FILTER_DATE_CACHE_TTL = 60 * 60; // 60 phút — query có date cụ thể (data cố định)
+// ── Helper: parse pagination params ──────────────────────────────
+function parsePagination(query) {
+  const page  = Math.max(1, parseInt(query.page  || '1',  10));
+  const limit = Math.min(50, Math.max(1, parseInt(query.limit || '20', 10)));
+  const skip  = (page - 1) * limit;
+  return { page, limit, skip };
+}
 
-
-// GET all results
+// ── GET /api/results?page=1&limit=20 ─────────────────────────────
+// Pagination để tránh dump toàn bộ collection → giảm Heap + Event Loop lag
 export const getResults = async (req, res) => {
   try {
-    // 1. Thử lấy từ cache
-    const cached = await redis.get(CACHE_KEY);
+    const { page, limit, skip } = parsePagination(req.query);
+    const cacheKey = `results:all:p${page}:l${limit}`;
+
+    // 1. Thử cache
+    const cached = await redis.get(cacheKey);
     if (cached) {
       return res.json(JSON.parse(cached));
     }
 
-    // 2. Cache miss → query MongoDB
-    const data = await Result.find().sort({ date: -1 });
+    // 2. Cache miss → query MongoDB với limit
+    const [data, total] = await Promise.all([
+      Result.find().sort({ date: -1 }).skip(skip).limit(limit).lean(), // .lean() → plain JS object, nhẹ hơn Mongoose document
+      Result.countDocuments(),
+    ]);
 
-    // 3. Lưu vào cache
-    await redis.setex(CACHE_KEY, CACHE_TTL, JSON.stringify(data));
+    const payload = {
+      data,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+        hasNext: page * limit < total,
+      },
+    };
 
-    res.json(data);
+    // 3. Lưu cache
+    await redis.setex(cacheKey, CACHE_TTL, JSON.stringify(payload));
+
+    res.json(payload);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 };
 
-// GET by region and/or date
+// ── GET /api/results/filter?region=&date=&page=&limit= ────────────
 export const getResultByRegion = async (req, res) => {
   try {
-    const { region, date } = req.query;
-    const cacheKey = filterCacheKey(region, date);
+    const { region, date, page: pageQ, limit: limitQ } = req.query;
+    const { page, limit, skip } = parsePagination({ page: pageQ, limit: limitQ });
+    const cacheKey = filterCacheKey({ region, date, page, limit });
 
     const cached = await redis.get(cacheKey);
     if (cached) {
@@ -47,24 +73,33 @@ export const getResultByRegion = async (req, res) => {
 
     const query = {};
     if (region) query.region = region;
-    if (date) query.date = new Date(date);
+    if (date)   query.date   = new Date(date);
 
-    const data = await Result.find(query).sort({ date: -1 });
-    // Nếu query có date cụ thể → data cố định → cache lâu hơn
+    const [data, total] = await Promise.all([
+      Result.find(query).sort({ date: -1 }).skip(skip).limit(limit).lean(),
+      Result.countDocuments(query),
+    ]);
+
+    const payload = {
+      data,
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    };
+
     const ttl = date ? FILTER_DATE_CACHE_TTL : FILTER_CACHE_TTL;
-    await redis.setex(cacheKey, ttl, JSON.stringify(data));
+    await redis.setex(cacheKey, ttl, JSON.stringify(payload));
 
-    res.json(data);
+    res.json(payload);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 };
 
-// GET by province name (nested inside provinces array)
+// ── GET /api/results/filter-province?province=&date= ─────────────
 export const getResultByProvince = async (req, res) => {
   try {
-    const { province, date } = req.query;
-    const cacheKey = filterCacheKey(province, date);
+    const { province, date, page: pageQ, limit: limitQ } = req.query;
+    const { page, limit, skip } = parsePagination({ page: pageQ, limit: limitQ });
+    const cacheKey = filterCacheKey({ province, date, page, limit });
 
     const cached = await redis.get(cacheKey);
     if (cached) {
@@ -73,19 +108,28 @@ export const getResultByProvince = async (req, res) => {
 
     const query = {};
     if (province) query["provinces.province"] = province;
-    if (date) query.date = new Date(date);
+    if (date)     query.date = new Date(date);
 
-    const data = await Result.find(query).sort({ date: -1 });
+    const [data, total] = await Promise.all([
+      Result.find(query).sort({ date: -1 }).skip(skip).limit(limit).lean(),
+      Result.countDocuments(query),
+    ]);
+
+    const payload = {
+      data,
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    };
+
     const ttl = date ? FILTER_DATE_CACHE_TTL : FILTER_CACHE_TTL;
-    await redis.setex(cacheKey, ttl, JSON.stringify(data));
+    await redis.setex(cacheKey, ttl, JSON.stringify(payload));
 
-    res.json(data);
+    res.json(payload);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 };
 
-// CREATE
+// ── POST /api/results ─────────────────────────────────────────────
 export const createResult = async (req, res) => {
   try {
     const newData = await Result.create(req.body);
@@ -95,18 +139,21 @@ export const createResult = async (req, res) => {
   }
 };
 
+// ── PUT /api/results ──────────────────────────────────────────────
 export const saveResult = async (req, res) => {
   try {
     const { date, region, provinces } = req.body;
     const result = await saveResultService({ date, region, provinces });
 
-    // Xóa cache để lần sau fetch lại data mới
-    await redis.del('results:all');
+    // Xóa tất cả cache liên quan khi có data mới
+    // Dùng pattern delete để clear tất cả pages
+    const keys = await redis.keys('results:*');
+    if (keys.length > 0) {
+      await redis.del(...keys);
+    }
 
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 };
-
-
