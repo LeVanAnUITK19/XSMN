@@ -81,11 +81,8 @@ function checkResponse(res, name) {
     errorCount.add(1);
   }
 
-  // Cache hit heuristic: server waiting time < 50ms
-  // (loại bỏ network/TLS overhead, chỉ đo thời gian server xử lý)
-  // Cache hit  → Redis trả về ngay → waiting < 50ms
-  // Cache miss → MongoDB query    → waiting > 100ms thường
-  if (res.timings.waiting < 50) {
+  // Heuristic: response < 100ms = cache hit (Redis trả về)
+  if (res.timings.duration < 100) {
     cacheHitRate.add(1);
   } else {
     cacheHitRate.add(0);
@@ -154,11 +151,12 @@ export default function () {
   group('not_found', () => {
     const res = http.get(`${BASE_URL}/api/nonexistent`, {
       tags: { type: 'error' },
+      // Báo cho k6 biết 404 là expected → không count vào http_req_failed
+      responseCallback: http.expectedStatuses(404),
     });
     check(res, {
       'not_found - status 404': (r) => r.status === 404,
     });
-    // 404 là expected, không count là error
   });
 
   sleep(0.3);

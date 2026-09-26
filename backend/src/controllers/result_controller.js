@@ -9,7 +9,8 @@ const CACHE_TTL = 60 * 2;
 
 // Cache key cho filter
 const filterCacheKey = (region, date) => `results:filter:${region || 'all'}:${date || 'all'}`;
-const FILTER_CACHE_TTL = 60 * 5; // 5 phút
+const FILTER_CACHE_TTL = 60 * 5;      // 5 phút — query không có date (có thể update)
+const FILTER_DATE_CACHE_TTL = 60 * 60; // 60 phút — query có date cụ thể (data cố định)
 
 
 // GET all results
@@ -49,7 +50,9 @@ export const getResultByRegion = async (req, res) => {
     if (date) query.date = new Date(date);
 
     const data = await Result.find(query).sort({ date: -1 });
-    await redis.setex(cacheKey, FILTER_CACHE_TTL, JSON.stringify(data));
+    // Nếu query có date cụ thể → data cố định → cache lâu hơn
+    const ttl = date ? FILTER_DATE_CACHE_TTL : FILTER_CACHE_TTL;
+    await redis.setex(cacheKey, ttl, JSON.stringify(data));
 
     res.json(data);
   } catch (err) {
@@ -73,7 +76,8 @@ export const getResultByProvince = async (req, res) => {
     if (date) query.date = new Date(date);
 
     const data = await Result.find(query).sort({ date: -1 });
-    await redis.setex(cacheKey, FILTER_CACHE_TTL, JSON.stringify(data));
+    const ttl = date ? FILTER_DATE_CACHE_TTL : FILTER_CACHE_TTL;
+    await redis.setex(cacheKey, ttl, JSON.stringify(data));
 
     res.json(data);
   } catch (err) {
