@@ -1,16 +1,31 @@
 #!/bin/sh
 # entrypoint.sh cho Grafana
-# Inject GF_PROMETHEUS_URL vào datasource config trước khi Grafana start.
-
+# Inject GF_PROMETHEUS_URL vào datasource config trước khi start.
 set -e
 
-DATASOURCE_FILE="/etc/grafana/provisioning/datasources/prometheus.yml"
+SRC="/etc/grafana/provisioning/datasources/prometheus.yml"
+WORK="/tmp/grafana-datasources"
+WORK_FILE="$WORK/prometheus.yml"
 
-# Thay placeholder ${GF_PROMETHEUS_URL} bằng giá trị thực từ env
-# Default: http://prometheus:9090 (local Docker Compose)
+# Tạo thư mục làm việc trong /tmp (có quyền write)
+mkdir -p "$WORK"
+cp "$SRC" "$WORK_FILE"
+
+# Thay placeholder bằng giá trị thực
 PROMETHEUS_URL="${GF_PROMETHEUS_URL:-http://prometheus:9090}"
+sed -i "s|\${GF_PROMETHEUS_URL}|${PROMETHEUS_URL}|g" "$WORK_FILE"
 
-sed -i "s|\${GF_PROMETHEUS_URL}|${PROMETHEUS_URL}|g" "$DATASOURCE_FILE"
+# Override provisioning path sang /tmp
+export GF_PATHS_PROVISIONING="/tmp/grafana-provisioning"
+mkdir -p "$GF_PATHS_PROVISIONING/datasources"
+mkdir -p "$GF_PATHS_PROVISIONING/dashboards"
 
-# Start Grafana bình thường
+# Copy file đã inject
+cp "$WORK_FILE" "$GF_PATHS_PROVISIONING/datasources/prometheus.yml"
+
+# Copy dashboard config (read-only, không cần inject)
+cp /etc/grafana/provisioning/dashboards/dashboard.yml \
+   "$GF_PATHS_PROVISIONING/dashboards/dashboard.yml"
+
+# Start Grafana
 exec /run.sh
