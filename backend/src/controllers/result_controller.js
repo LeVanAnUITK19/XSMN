@@ -5,7 +5,11 @@ import redis from "../services/redis.js";
 
 
 const CACHE_KEY = 'results:all';
-const CACHE_TTL = 60 * 2; // 5 minutes
+const CACHE_TTL = 60 * 2;
+
+// Cache key cho filter
+const filterCacheKey = (region, date) => `results:filter:${region || 'all'}:${date || 'all'}`;
+const FILTER_CACHE_TTL = 60 * 5; // 5 phút
 
 
 // GET all results
@@ -33,12 +37,20 @@ export const getResults = async (req, res) => {
 export const getResultByRegion = async (req, res) => {
   try {
     const { region, date } = req.query;
+    const cacheKey = filterCacheKey(region, date);
+
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+      return res.json(JSON.parse(cached));
+    }
 
     const query = {};
     if (region) query.region = region;
     if (date) query.date = new Date(date);
 
     const data = await Result.find(query).sort({ date: -1 });
+    await redis.setex(cacheKey, FILTER_CACHE_TTL, JSON.stringify(data));
+
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -49,12 +61,20 @@ export const getResultByRegion = async (req, res) => {
 export const getResultByProvince = async (req, res) => {
   try {
     const { province, date } = req.query;
+    const cacheKey = filterCacheKey(province, date);
+
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+      return res.json(JSON.parse(cached));
+    }
 
     const query = {};
     if (province) query["provinces.province"] = province;
     if (date) query.date = new Date(date);
 
     const data = await Result.find(query).sort({ date: -1 });
+    await redis.setex(cacheKey, FILTER_CACHE_TTL, JSON.stringify(data));
+
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
