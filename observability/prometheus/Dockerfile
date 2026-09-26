@@ -1,22 +1,16 @@
 FROM prom/prometheus:v2.53.0
 
-# Copy config
+# Copy config và entrypoint
 COPY prometheus.yml /etc/prometheus/prometheus.yml
+COPY entrypoint.sh /entrypoint.sh
 
-# Copy alert rules nếu có
-# COPY rules/ /etc/prometheus/rules/
+# chmod cần root — prom image mặc định chạy root khi build
+USER root
+RUN chmod +x /entrypoint.sh
 
-# Data directory (mount volume ở đây để persist)
 VOLUME ["/prometheus"]
 
 EXPOSE 9090
 
-ENTRYPOINT ["/bin/prometheus"]
-CMD [ \
-  "--config.file=/etc/prometheus/prometheus.yml", \
-  "--storage.tsdb.path=/prometheus", \
-  "--storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-7d}", \
-  "--web.enable-lifecycle", \
-  "--web.console.libraries=/usr/share/prometheus/console_libraries", \
-  "--web.console.templates=/usr/share/prometheus/consoles" \
-]
+# Script inject env vars vào config rồi exec prometheus
+ENTRYPOINT ["/bin/sh", "/entrypoint.sh"]

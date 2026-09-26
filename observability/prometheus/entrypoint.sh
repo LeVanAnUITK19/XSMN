@@ -1,42 +1,36 @@
 #!/bin/sh
-# entrypoint.sh
-# Inject env vars vào prometheus.yml trước khi start Prometheus.
-# Chạy khi container start — không chạy tay.
-
+# entrypoint.sh - Inject env vars vào prometheus config rồi start Prometheus
 set -e
 
-CONFIG="/etc/prometheus/prometheus.yml"
+SRC_CONFIG="/etc/prometheus/prometheus.yml"
+WORK_CONFIG="/tmp/prometheus.yml"
+TOKEN_FILE="/tmp/metrics_token"
+
+# Copy config sang /tmp để có quyền write
+cp "$SRC_CONFIG" "$WORK_CONFIG"
 
 # ── 1. Inject BACKEND_TARGET ──────────────────────────────────────────────────
-# BACKEND_TARGET có thể là:
-#   Local:      host.docker.internal:3000
-#   Render:     your-backend.onrender.com   (KHÔNG có http/https)
 BACKEND_TARGET="${BACKEND_TARGET:-host.docker.internal:3000}"
+sed -i "s|\${BACKEND_TARGET:-host.docker.internal:3000}|${BACKEND_TARGET}|g" "$WORK_CONFIG"
 
-sed -i "s|\${BACKEND_TARGET:-host.docker.internal:3000}|${BACKEND_TARGET}|g" "$CONFIG"
-
-# ── 2. Tự động detect scheme (http vs https) ──────────────────────────────────
-# Nếu target trông giống Render URL (*.onrender.com) → dùng https
-# Nếu không → mặc định http (local)
+# ── 2. Tự động thêm scheme: https nếu là Render URL ──────────────────────────
 if echo "$BACKEND_TARGET" | grep -q "\.onrender\.com"; then
-  # Thêm scheme: https vào job config
-  sed -i '/job_name.*xsmn-backend/a\    scheme: https' "$CONFIG"
+  sed -i '/job_name.*xsmn-backend/a\    scheme: https' "$WORK_CONFIG"
 fi
 
 # ── 3. Inject METRICS_TOKEN nếu có ───────────────────────────────────────────
 if [ -n "$METRICS_TOKEN" ]; then
-  # Ghi token vào file (không echo ra log)
-  printf '%s' "$METRICS_TOKEN" > /etc/prometheus/metrics_token
-  chmod 600 /etc/prometheus/metrics_token
+  printf '%s' "$METRICS_TOKEN" > "$TOKEN_FILE"
+  chmod 600 "$TOKEN_FILE"
 
   # Uncomment authorization block trong config
-  sed -i 's/^    # authorization:/    authorization:/' "$CONFIG"
-  sed -i 's/^    #   credentials_file:/      credentials_file:/' "$CONFIG"
+  sed -i 's/^    # authorization:/    authorization:/' "$WORK_CONFIG"
+  sed -i "s|^    #   credentials_file:.*|      credentials_file: ${TOKEN_FILE}|" "$WORK_CONFIG"
 fi
 
-# ── 4. Start Prometheus ───────────────────────────────────────────────────────
+# ── 4. Start Prometheus với config đã inject ─────────────────────────────────
 exec /bin/prometheus \
-  --config.file="$CONFIG" \
+  --config.file="$WORK_CONFIG" \
   --storage.tsdb.path=/prometheus \
   --storage.tsdb.retention.time="${PROMETHEUS_RETENTION:-7d}" \
   --web.enable-lifecycle \
