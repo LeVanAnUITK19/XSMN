@@ -20,39 +20,52 @@ import { check, sleep, group } from 'k6';
 import { Counter, Rate, Trend } from 'k6/metrics';
 
 // ── Custom metrics ────────────────────────────────────────────────
-const cacheHitRate  = new Rate('cache_hit_rate');   // tỉ lệ response nhanh (cache)
-const errorCount    = new Counter('error_count');   // tổng lỗi
-const latencyTrend  = new Trend('latency_ms', true); // latency tùy chỉnh
+const cacheHitRate = new Rate('cache_hit_rate');   // tỉ lệ response nhanh (cache)
+const errorCount = new Counter('error_count');   // tổng lỗi
+const latencyTrend = new Trend('latency_ms', true); // latency tùy chỉnh
 
 // ── Config ────────────────────────────────────────────────────────
-const BASE_URL = __ENV.BASE_URL || 'https://xsmn-1.onrender.com';
+const BASE_URL = __ENV.BASE_URL || 'https://long-queen-5b3a.levanan1902006.workers.dev';
 
 // ── Kịch bản load test ────────────────────────────────────────────
-// Phù hợp với Render Free Tier (0.1 CPU shared)
-// Gồm 4 giai đoạn:
-//   1. Warm up:   0 → 5 VUs trong 30s   (làm nóng Redis cache)
-//   2. Normal:    5 → 15 VUs trong 1m   (tải bình thường)
-//   3. Peak:     15 → 30 VUs trong 30s  (giới hạn free tier)
-//   4. Cool down: 30 → 0 VUs trong 30s
+// 3 mode:
+//   normal (default): test ổn định 30 VUs — đã biết pass
+//   stress:           tìm điểm gãy lên đến 500 VUs
+//   spike:            test đột biến traffic (0 → 200 → 0 ngay lập tức)
 //
-// Muốn test stress mạnh hơn (paid tier hoặc local):
-//   k6 run -e STRESS=true test/test.js
-const isStress = __ENV.STRESS === 'true';
+// Chạy:
+//   k6 run test/test.js                      ← normal
+//   k6 run -e MODE=stress test/test.js       ← stress
+//   k6 run -e MODE=spike  test/test.js       ← spike
+
+const MODE = __ENV.MODE || 'normal';
 
 export const options = {
-  stages: isStress
+  stages: MODE === 'stress'
     ? [
-        { duration: '30s', target: 10  },
-        { duration: '30s', target: 50  },
-        { duration: '1m',  target: 100 },
-        { duration: '30s', target: 200 },
-        { duration: '30s', target: 0   },
+      { duration: '30s', target: 50 }, // bắt đầu thử
+      { duration: '30s', target: 100 }, // áp lực
+      { duration: '30s', target: 200 }, // heavy stress
+      { duration: '30s', target: 300 }, // near breaking
+      { duration: '30s', target: 500 }, // breaking point
+      { duration: '30s', target: 700 },
+      { duration: '30s', target: 900 },
+      { duration: '30s', target: 1000 },
+      { duration: '30s', target: 0 }, // cool down
+    ]
+    : MODE === 'spike'
+      ? [
+        { duration: '30s', target: 5 }, // idle
+        { duration: '10s', target: 200 }, // đột biến lên
+        { duration: '1m', target: 200 }, // giữ peak
+        { duration: '10s', target: 5 }, // đột biến xuống
+        { duration: '30s', target: 5 }, // recovery
       ]
-    : [
-        { duration: '30s', target: 5  }, // 1. Warm up cache
-        { duration: '1m',  target: 15 }, // 2. Normal load
-        { duration: '30s', target: 30 }, // 3. Peak
-        { duration: '30s', target: 0  }, // 4. Cool down
+      : [
+        { duration: '30s', target: 5 }, // warm up cache
+        { duration: '1m', target: 15 }, // normal
+        { duration: '30s', target: 30 }, // peak
+        { duration: '30s', target: 0 }, // cool down
       ],
 
   thresholds: {
@@ -120,7 +133,7 @@ export default function () {
   // ── Group 3: Filter theo region ──────────────────────────────
   group('filter_by_region', () => {
     const regions = ['mien-nam', 'mien-trung', 'mien-bac'];
-    const region  = regions[Math.floor(Math.random() * regions.length)];
+    const region = regions[Math.floor(Math.random() * regions.length)];
 
     const res = http.get(`${BASE_URL}/api/results/filter?region=${region}`, {
       tags: { type: 'filter' },
@@ -165,8 +178,8 @@ export default function () {
 // ── Summary in-console ────────────────────────────────────────────
 export function handleSummary(data) {
   const duration = data.metrics.http_req_duration;
-  const failed   = data.metrics.http_req_failed;
-  const reqs     = data.metrics.http_reqs;
+  const failed = data.metrics.http_req_failed;
+  const reqs = data.metrics.http_reqs;
 
   console.log('\n============================================');
   console.log('           XSMN LOAD TEST SUMMARY          ');
