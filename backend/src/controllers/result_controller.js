@@ -1,7 +1,6 @@
 import Result from "../models/results.js";
 import { saveResult as saveResultService } from "../services/saveResult.js";
 import redis from "../services/redis.js";
-import { cacheCounter } from '../config/metrics.js';
 
 
 
@@ -15,12 +14,10 @@ export const getResults = async (req, res) => {
     // 1. Thử lấy từ cache
     const cached = await redis.get(CACHE_KEY);
     if (cached) {
-      cacheCounter.inc({ result: 'hit' });
       return res.json(JSON.parse(cached));
     }
 
     // 2. Cache miss → query MongoDB
-    cacheCounter.inc({ result: 'miss' });
     const data = await Result.find().sort({ date: -1 });
 
     // 3. Lưu vào cache

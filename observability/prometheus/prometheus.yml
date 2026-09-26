@@ -1,0 +1,39 @@
+global:
+  scrape_interval: 15s       # Scrape mỗi 15 giây
+  evaluation_interval: 15s   # Đánh giá alert rules mỗi 15 giây
+  scrape_timeout: 10s
+
+# Alert manager (để trống nếu chưa dùng)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets: []
+
+# rule_files không có folder → bỏ trống để tránh Prometheus lỗi khi start
+# rule_files:
+#   - "rules/*.yml"
+
+scrape_configs:
+  # Job scrape backend XSMN
+  - job_name: 'xsmn-backend'
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+    # scheme mặc định là http. Render public URL dùng https nên entrypoint.sh sẽ set scheme=https
+
+    # Nếu METRICS_TOKEN được set, Prometheus gửi Bearer token
+    # entrypoint.sh sẽ tự uncomment block này khi có METRICS_TOKEN
+    # authorization:
+    #   credentials_file: /etc/prometheus/metrics_token
+
+    static_configs:
+      - targets:
+          # entrypoint.sh sẽ thay thế placeholder này bằng giá trị BACKEND_TARGET
+          - '${BACKEND_TARGET:-host.docker.internal:3000}'
+        labels:
+          environment: 'production'
+          service: 'xsmn-backend'
+
+  # Prometheus tự scrape chính nó (optional, hữu ích để debug)
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']

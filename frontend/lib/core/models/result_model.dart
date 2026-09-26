@@ -1,5 +1,3 @@
-import 'package:flutter/material.dart';
-
 class ProvinceResult {
   final String province;
   final Map<String, List<String>> full;

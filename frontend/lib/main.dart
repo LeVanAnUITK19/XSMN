@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'package:xsmn/features/views/home_view.dart';
-import 'package:xsmn/widgets/wait_page.dart';
+import 'features/views/home_view.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 void main() async {

@@ -2,17 +2,27 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../features/viewModels/home_viewmodel.dart';
 import '../core/models/result_model.dart';
+import '../core/models/ticket_history_model.dart';
+import '../core/services/database_service.dart';
+import '../core/lottery/lottery_checker.dart';
+import '../core/lottery/lottery_check_result.dart';
 
+/// Mở dialog dò vé
 void showCheckTicketDialog(BuildContext context, ResultViewModel vm) {
   showDialog(
     context: context,
     builder: (_) => Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      backgroundColor: Colors.yellow.shade50,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      backgroundColor: Colors.white,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       child: _CheckTicketDialog(vm: vm),
     ),
   );
 }
+
+// ─────────────────────────────────────────────
+// Dialog chính
+// ─────────────────────────────────────────────
 
 class _CheckTicketDialog extends StatefulWidget {
   final ResultViewModel vm;
@@ -30,11 +40,9 @@ class _CheckTicketDialogState extends State<_CheckTicketDialog> {
   late DateTime _selectedDate;
   String? _selectedProvince;
   LotteryResult? _dateResult;
-  bool _isLoading = false;
 
   // Kết quả dò
-  List<_WinInfo>? _wins;
-  String? _checkedNumber;
+  LotteryCheckResult? _checkResult;
 
   @override
   void initState() {
@@ -48,8 +56,12 @@ class _CheckTicketDialogState extends State<_CheckTicketDialog> {
 
   @override
   void dispose() {
-    for (final c in _controllers) c.dispose();
-    for (final f in _focusNodes) f.dispose();
+    for (final c in _controllers) {
+      c.dispose();
+    }
+    for (final f in _focusNodes) {
+      f.dispose();
+    }
     super.dispose();
   }
 
@@ -65,12 +77,12 @@ class _CheckTicketDialogState extends State<_CheckTicketDialog> {
       _selectedProvince = cached?.provinces.isNotEmpty == true
           ? cached!.provinces.first.province
           : null;
-      _wins = null;
-      _checkedNumber = null;
+      _checkResult = null;
     });
   }
 
-  void _checkTicket() {
+  Future<void> _checkTicket() async {
+    // Ghép 6 chữ số — giữ nguyên số 0 đầu
     final digits = _controllers.map((c) => c.text.trim()).toList();
     if (digits.any((d) => d.isEmpty)) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -78,7 +90,7 @@ class _CheckTicketDialogState extends State<_CheckTicketDialog> {
       );
       return;
     }
-    final number = digits.map((d) => d[0]).join();
+    final number = digits.map((d) => d[0]).join(); // giữ chuỗi String
 
     if (_dateResult == null || _selectedProvince == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -92,201 +104,54 @@ class _CheckTicketDialogState extends State<_CheckTicketDialog> {
       orElse: () => _dateResult!.provinces.first,
     );
 
-    const prizeOrder = ['G8', 'G7', 'G6', 'G5', 'G4', 'G3', 'G2', 'G1', 'DB'];
-    const prizeNames = {
-      'G8': 'Giải Tám',
-      'G7': 'Giải Bảy',
-      'G6': 'Giải Sáu',
-      'G5': 'Giải Năm',
-      'G4': 'Giải Tư',
-      'G3': 'Giải Ba',
-      'G2': 'Giải Nhì',
-      'G1': 'Giải Nhất',
-      'DB': 'Giải Đặc Biệt',
-    };
-
-    final wins = <_WinInfo>[];
-    for (final prize in prizeOrder) {
-      for (final n in (province.full[prize] ?? <String>[])) {
-        final clean = n.trim();
-        if (clean.isEmpty) continue;
-        final len = clean.length;
-        final tail = len >= 6 ? clean.substring(len - 6) : clean;
-        final offset = 6 - tail.length;
-        if (tail == number.substring(offset)) {
-          wins.add(_WinInfo(prize: prizeNames[prize] ?? prize, number: clean));
-        }
-      }
-    }
-
-    // Dò giải phụ Đặc Biệt
-    for (final n in (province.full['DB'] ?? <String>[])) {
-      final db = n.trim();
-      if (db.length < 6) continue;
-
-      // Giải phụ đặc biệt: 5 số cuối giống DB, sai số đầu
-      final db5 = db.substring(db.length - 5);
-      final ticket5 = number.substring(1); // 5 số cuối vé
-      if (db5 == ticket5 && db[db.length - 6] != number[0]) {
-        wins.add(_WinInfo(
-          prize: 'Giải Phụ ĐB (~50tr)',
-          number: db,
-          note: '5 số cuối khớp, sai số đầu',
-        ));
-      }
-
-      // Giải khuyến khích: sai đúng 1 số bất kỳ so với DB
-      final db6 = db.substring(db.length - 6);
-      int diffCount = 0;
-      for (int k = 0; k < 6; k++) {
-        if (db6[k] != number[k]) diffCount++;
-      }
-      if (diffCount == 1) {
-        // Tránh trùng với giải chính hoặc giải phụ ĐB
-        final alreadyWon = wins.any((w) => w.number == db && w.prize != 'Giải Phụ ĐB (~50tr)');
-        final isMainWin = db6 == number;
-        if (!alreadyWon && !isMainWin) {
-          wins.add(_WinInfo(
-            prize: 'Giải Khuyến Khích (~6tr)',
-            number: db,
-            note: 'Sai 1 số so với ĐB',
-          ));
-        }
-      }
-    }
+    // Gọi LotteryChecker — engine xử lý toàn bộ logic
+    final result = LotteryChecker.check(
+      ticketNumber: number,
+      station: province.province,
+      drawDate: _selectedDate,
+      results: province.full,
+    );
 
     setState(() {
-      _wins = wins;
-      _checkedNumber = number;
+      _checkResult = result;
     });
+
+    // Lưu lịch sử
+    final history = TicketHistory(
+      ticketNumber: number,
+      station: province.province,
+      drawDate: DateFormat('yyyy-MM-dd').format(_selectedDate),
+      isWin: result.isWinner,
+      prizeName: result.topPrizeName,
+      grossPrize: result.grossPrize,
+      taxAmount: result.taxAmount,
+      netPrize: result.netPrize,
+      checkedAt: DateTime.now(),
+    );
+    await DatabaseService.instance.insertTicketHistory(history);
   }
 
   void _reset() {
-    for (final c in _controllers) c.clear();
+    for (final c in _controllers) {
+      c.clear();
+    }
     setState(() {
-      _wins = null;
-      _checkedNumber = null;
+      _checkResult = null;
     });
     _focusNodes[0].requestFocus();
   }
 
   @override
   Widget build(BuildContext context) {
-    // Hiển thị màn kết quả nếu đã dò
-    if (_wins != null && _checkedNumber != null) {
+    if (_checkResult != null) {
       return _buildResultView(context);
     }
     return _buildInputView(context);
   }
 
-  Widget _buildResultView(BuildContext context) {
-    final wins = _wins!;
-    final number = _checkedNumber!;
-    final dateStr = DateFormat('dd/MM/yyyy').format(_selectedDate);
-    final isWin = wins.isNotEmpty;
-
-    return Container(
-      decoration: BoxDecoration(
-        color: isWin ? Colors.green.shade50 : Colors.red.shade50,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Header
-          Text(
-            isWin ? '🎉 Chúc mừng!' : '😢 Không trúng',
-            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            number,
-            style: const TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.bold,
-              color: Colors.blue,
-              letterSpacing: 4,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '$_selectedProvince  •  $dateStr',
-            style: const TextStyle(fontSize: 13, color: Colors.grey),
-          ),
-          const SizedBox(height: 16),
-
-          if (isWin)
-            ...wins.map((w) => Container(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.green.shade100,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.green.shade400),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Flexible(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(w.prize,
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.bold, fontSize: 14)),
-                            if (w.note != null)
-                              Text(w.note!,
-                                  style: TextStyle(
-                                      fontSize: 11,
-                                      color: Colors.grey.shade600)),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(w.number,
-                          style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w900,
-                              color: Colors.red)),
-                    ],
-                  ),
-                ))
-          else
-            Text(
-              'Vé $number không trúng giải nào.\nChúc bạn may mắn lần sau!',
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 14),
-            ),
-
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: _reset,
-                  child: const Text('Dò tiếp'),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.red,
-                    foregroundColor: Colors.white,
-                  ),
-                  child: const Text('Đóng'),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
+  // ─────────────────────────────────────────────
+  // Màn hình nhập số vé
+  // ─────────────────────────────────────────────
 
   Widget _buildInputView(BuildContext context) {
     final dateStr = DateFormat('dd/MM/yyyy').format(_selectedDate);
@@ -327,9 +192,11 @@ class _CheckTicketDialogState extends State<_CheckTicketDialog> {
                   const Icon(Icons.calendar_today,
                       size: 18, color: Colors.red),
                   const SizedBox(width: 8),
-                  Text(dateStr,
-                      style: const TextStyle(
-                          fontSize: 15, fontWeight: FontWeight.w600)),
+                  Text(
+                    dateStr,
+                    style: const TextStyle(
+                        fontSize: 15, fontWeight: FontWeight.w600),
+                  ),
                   const Spacer(),
                   const Icon(Icons.arrow_drop_down, color: Colors.grey),
                 ],
@@ -339,12 +206,7 @@ class _CheckTicketDialogState extends State<_CheckTicketDialog> {
           const SizedBox(height: 10),
 
           // Chọn tỉnh
-          if (_isLoading)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 8),
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          else if (_provinces.isEmpty)
+          if (_provinces.isEmpty)
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
@@ -352,8 +214,10 @@ class _CheckTicketDialogState extends State<_CheckTicketDialog> {
                 borderRadius: BorderRadius.circular(8),
                 color: Colors.orange.shade50,
               ),
-              child: const Text('Không có dữ liệu cho ngày này',
-                  style: TextStyle(color: Colors.orange)),
+              child: const Text(
+                'Không có dữ liệu cho ngày này',
+                style: TextStyle(color: Colors.orange),
+              ),
             )
           else
             Container(
@@ -405,7 +269,8 @@ class _CheckTicketDialogState extends State<_CheckTicketDialog> {
                     ),
                     onChanged: (value) {
                       if (value.length > 1) {
-                        _controllers[idx].text = value[value.length - 1];
+                        _controllers[idx].text =
+                            value[value.length - 1];
                         _controllers[idx].selection =
                             const TextSelection.collapsed(offset: 1);
                       }
@@ -413,7 +278,8 @@ class _CheckTicketDialogState extends State<_CheckTicketDialog> {
                         _focusNodes[idx + 1].requestFocus();
                         _controllers[idx + 1].selection = TextSelection(
                           baseOffset: 0,
-                          extentOffset: _controllers[idx + 1].text.length,
+                          extentOffset:
+                              _controllers[idx + 1].text.length,
                         );
                       } else if (value.isEmpty && idx > 0) {
                         _focusNodes[idx - 1].requestFocus();
@@ -438,20 +304,442 @@ class _CheckTicketDialogState extends State<_CheckTicketDialog> {
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8)),
               ),
-              child: const Text('Dò Vé',
-                  style: TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.bold)),
+              child: const Text(
+                'Dò Vé',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
             ),
           ),
         ],
       ),
     );
   }
+
+  // ─────────────────────────────────────────────
+  // Màn hình kết quả
+  // ─────────────────────────────────────────────
+
+  Widget _buildResultView(BuildContext context) {
+    final r = _checkResult!;
+    final dateStr = DateFormat('dd/MM/yyyy').format(_selectedDate);
+
+    // Kết quả chưa đủ dữ liệu
+    if (r.dataStatus == DataStatus.incomplete) {
+      return _buildIncompleteDataView(context);
+    }
+
+    return ConstrainedBox(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.85,
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // ── Header ──────────────────────────────────────
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
+              decoration: BoxDecoration(
+                color: r.isWinner
+                    ? Colors.green.shade50
+                    : const Color(0xFFFFF0F0),
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(16)),
+              ),
+              child: Column(
+                children: [
+                  Text(
+                    r.isWinner ? '🎉' : '😢',
+                    style: const TextStyle(fontSize: 52),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    r.isWinner ? 'CHÚC MỪNG!' : 'CHƯA TRÚNG',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: r.isWinner
+                          ? Colors.green.shade700
+                          : Colors.red.shade700,
+                      letterSpacing: 1,
+                    ),
+                  ),
+                  if (r.isWinner && r.winnings.length > 1)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        'Vé của bạn trúng ${r.winnings.length} giải',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.green.shade600,
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 12),
+                  // Số vé
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 24, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      r.ticketNumber,
+                      style: const TextStyle(
+                        fontSize: 36,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blue,
+                        letterSpacing: 6,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.location_on,
+                          size: 15, color: Colors.red),
+                      const SizedBox(width: 4),
+                      Text(
+                        _selectedProvince ?? '',
+                        style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey.shade700,
+                            fontWeight: FontWeight.w500),
+                      ),
+                      Container(
+                        margin:
+                            const EdgeInsets.symmetric(horizontal: 10),
+                        width: 1,
+                        height: 14,
+                        color: Colors.grey.shade400,
+                      ),
+                      const Icon(Icons.calendar_today,
+                          size: 14, color: Colors.grey),
+                      const SizedBox(width: 4),
+                      Text(
+                        dateStr,
+                        style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey.shade700),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            // ── Nội dung dưới ────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
+              child: Column(
+                children: [
+                  if (r.isWinner) ...[
+                    // Danh sách từng giải trúng
+                    ...r.winnings.map((w) => _WinningPrizeRow(prize: w)),
+                    const SizedBox(height: 8),
+
+                    // Divider + tổng kết
+                    const Divider(height: 1, color: Colors.grey),
+                    const SizedBox(height: 8),
+
+                    // Tổng thưởng
+                    _SummaryRow(
+                      label: 'Tổng thưởng',
+                      value: _fmt(r.grossPrize),
+                      bold: true,
+                    ),
+                    if (r.taxAmount > 0) ...[
+                      _SummaryRow(
+                        label: 'Thuế TNCN dự kiến',
+                        value: '- ${_fmt(r.taxAmount)}',
+                        color: Colors.red.shade600,
+                      ),
+                      const Divider(height: 12, color: Colors.grey),
+                      _SummaryRow(
+                        label: 'Thực nhận dự kiến',
+                        value: _fmt(r.netPrize),
+                        bold: true,
+                        color: Colors.green.shade700,
+                        large: true,
+                      ),
+                    ] else ...[
+                      _SummaryRow(
+                        label: 'Thuế TNCN',
+                        value: 'Không phát sinh',
+                        color: Colors.grey.shade500,
+                      ),
+                      const Divider(height: 12, color: Colors.grey),
+                      _SummaryRow(
+                        label: 'Thực nhận dự kiến',
+                        value: _fmt(r.netPrize),
+                        bold: true,
+                        color: Colors.green.shade700,
+                        large: true,
+                      ),
+                    ],
+                    const SizedBox(height: 8),
+                    // Ghi chú thuế
+                    _TaxNote(taxableAmount: r.taxableAmount),
+                  ] else ...[
+                    // Không trúng
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Column(
+                        children: [
+                          Text(
+                            'Vé ${r.ticketNumber} chưa trúng thưởng hôm nay.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.grey.shade700),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Chúc bạn may mắn ở kỳ quay tiếp theo.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.grey.shade500),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+
+                  const SizedBox(height: 12),
+
+                  // Nút bấm
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _reset,
+                          icon: const Icon(Icons.refresh, size: 18),
+                          label: const Text('Dò tiếp'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.red,
+                            side: const BorderSide(color: Colors.red),
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 12),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10)),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: () =>
+                              Navigator.of(context).pop(),
+                          icon: const Icon(Icons.close, size: 18),
+                          label: const Text('Đóng'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.red,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 12),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10)),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Hiển thị khi dữ liệu chưa đủ ───────────────────────────
+
+  Widget _buildIncompleteDataView(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.hourglass_empty, size: 56, color: Colors.orange),
+          const SizedBox(height: 16),
+          const Text(
+            'Chưa thể dò vé',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Chưa thể dò vé vì kết quả kỳ quay chưa đầy đủ.\n'
+            'Vui lòng thử lại sau khi có đủ kết quả.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Đóng'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Format tiền ─────────────────────────────────────────────
+
+  String _fmt(int amount) {
+    final formatter = NumberFormat('#,###', 'vi_VN');
+    return '${formatter.format(amount)}đ';
+  }
 }
 
-class _WinInfo {
-  final String prize;
-  final String number;
-  final String? note;
-  const _WinInfo({required this.prize, required this.number, this.note});
+// ─────────────────────────────────────────────
+// Widget phụ
+// ─────────────────────────────────────────────
+
+class _WinningPrizeRow extends StatelessWidget {
+  final WinningPrize prize;
+
+  const _WinningPrizeRow({required this.prize});
+
+  @override
+  Widget build(BuildContext context) {
+    final isSpecial = prize.prizeCode == 'DB';
+    final isSecondary = prize.prizeCode == 'DB_PHU';
+    final accentColor = isSpecial
+        ? Colors.red
+        : isSecondary
+            ? Colors.orange
+            : Colors.green;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: accentColor.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: accentColor.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.emoji_events, color: Colors.amber, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  prize.prizeName,
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                    color: accentColor.shade700,
+                  ),
+                ),
+                if (prize.note != null)
+                  Text(
+                    prize.note!,
+                    style: TextStyle(
+                        fontSize: 11, color: Colors.grey.shade600),
+                  ),
+              ],
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                _fmt(prize.amount),
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: accentColor,
+                ),
+              ),
+              Text(
+                prize.matchedNumber,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Colors.red,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _fmt(int amount) {
+    final formatter = NumberFormat('#,###', 'vi_VN');
+    return '${formatter.format(amount)}đ';
+  }
+}
+
+class _SummaryRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final bool bold;
+  final Color? color;
+  final bool large;
+
+  const _SummaryRow({
+    required this.label,
+    required this.value,
+    this.bold = false,
+    this.color,
+    this.large = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final style = TextStyle(
+      fontSize: large ? 15 : 13,
+      fontWeight: bold ? FontWeight.bold : FontWeight.normal,
+      color: color ?? Colors.black87,
+    );
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: style),
+          Text(value, style: style),
+        ],
+      ),
+    );
+  }
+}
+
+class _TaxNote extends StatelessWidget {
+  final int taxableAmount;
+
+  const _TaxNote({required this.taxableAmount});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        taxableAmount > 0
+            ? 'Thuế TNCN theo quy định từ 01/07/2026: 10% × phần vượt 20 triệu. '
+                'Số tiền thực nhận là dự kiến — đơn vị phát hành xổ số sẽ thực hiện '
+                'khấu trừ khi thanh toán.'
+            : 'Tổng giải thưởng ≤ 20 triệu đồng — không phát sinh thuế TNCN theo '
+                'quy định từ 01/07/2026.',
+        style: TextStyle(fontSize: 11, color: Colors.grey.shade600, height: 1.4),
+      ),
+    );
+  }
 }

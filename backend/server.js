@@ -3,43 +3,34 @@ import dotenv from 'dotenv';
 import cors from 'cors';
 import { connectDB } from './src/config/db.js';
 import resultRoutes from './src/routes/result_route.js';
-import register from './src/config/metrics.js';
-import { httpRequestCounter, httpRequestDuration } from './src/config/metrics.js';
+import register from './src/monitoring/metrics.js';
+import { metricsMiddleware, metricsAuthMiddleware } from './src/monitoring/metricsMiddleware.js';
 
 dotenv.config();
+
 const app = express();
 
 app.use(cors());
 app.use(express.json());
 
-// Middleware đo HTTP metrics
-app.use((req, res, next) => {
-  const end = httpRequestDuration.startTimer();
-  res.on('finish', () => {
-    const labels = {
-      method: req.method,
-      route: req.route?.path || req.path,
-      status_code: res.statusCode,
-    };
-    httpRequestCounter.inc(labels);
-    end(labels);
-  });
-  next();
-});
+// HTTP metrics middleware — phải đặt trước tất cả routes
+// /metrics endpoint bị bỏ qua tự động bên trong middleware
+app.use(metricsMiddleware);
 
-await connectDB(process.env.MONGODB_CONNECTIONSTRING)
-  .then(() => console.log('DB connected'))
-  .catch(err => console.error(err));
+// Kết nối DB
+await connectDB(process.env.MONGODB_CONNECTIONSTRING);
 
+// API routes
 app.use('/api/results', resultRoutes);
 
-// Endpoint cho Prometheus scrape
-app.get('/metrics', async (req, res) => {
+// Prometheus scrape endpoint
+// metricsAuthMiddleware kiểm tra METRICS_TOKEN nếu được set
+app.get('/metrics', metricsAuthMiddleware, async (_req, res) => {
   res.set('Content-Type', register.contentType);
   res.end(await register.metrics());
 });
 
-const PORT = process.env.PORT || 5001;
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server is running on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });

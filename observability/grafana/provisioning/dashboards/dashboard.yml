@@ -1,0 +1,14 @@
+apiVersion: 1
+
+providers:
+  - name: 'XSMN Dashboards'
+    orgId: 1
+    folder: 'XSMN'
+    folderUid: 'xsmn'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      # Grafana sẽ load tất cả .json files từ thư mục này
+      path: /var/lib/grafana/dashboards

@@ -11,8 +11,8 @@ import '../viewModels/home_viewmodel.dart';
 import 'package:intl/intl.dart';
 import '../../widgets/my_singleChoise.dart';
 import '../../widgets/wait_page.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
 import '../../widgets/auto_check.dart';
+import '../../core/services/database_service.dart';
 
 class HomePageView extends StatefulWidget {
   const HomePageView({super.key});
@@ -31,6 +31,8 @@ class _HomePageState extends State<HomePageView> {
   @override
   void initState() {
     super.initState();
+    // Khởi tạo DB sớm để sẵn sàng khi dùng
+    DatabaseService.instance.database;
     vm = ResultViewModel();
     vm.addListener(_update);
     vm.load();
@@ -156,11 +158,11 @@ class _HomePageState extends State<HomePageView> {
                         isDB: row['label'] == 'DB',
                       ),
                     );
-                  }).toList(),
+                  }),
                 ],
               ),
             );
-          }).toList(),
+          }),
         ],
       ),
     );
@@ -235,7 +237,9 @@ class _HomePageState extends State<HomePageView> {
 
         backgroundColor: const Color.fromARGB(255, 240, 17, 1),
       ),
-      drawer: const MyDrawer(),
+      drawer: MyDrawer(
+        onCheckTicket: () => showCheckTicketDialog(context, vm),
+      ),
 
       body: Column(
         children: [
@@ -354,7 +358,7 @@ class _HomePageState extends State<HomePageView> {
 
           SafeArea(
             child: Container(
-              height: 60,
+              height: 50,
               color: Colors.white,
               child: Row(
                 children: [
