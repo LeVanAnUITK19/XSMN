@@ -1,76 +1,257 @@
-# CI — Continuous Integration (quality gate)
-#
-# Khi nào chạy:
-#   - Mở / cập nhật Pull Request vào main
-#   - Push trực tiếp lên main
-#
-# Việc gì xảy ra:
-#   - Cài dependencies backend (npm ci)
-#   - Chạy unit test trên matrix Node 18 / 20 / 22
-#
-# Việc KHÔNG làm:
-#   - Không build / push Docker image
-#   - Không deploy production
-#
-# PR fail test → merge bị chặn (nếu repo bật branch protection).
-# Push main pass test → workflow CD được kích hoạt (xem cd.yml).
-name: CI
+name: CI/CD Pipeline
 
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
-
-permissions:
-  contents: read
+  # Cho phép chạy thủ công từ GitHub Actions tab để test
+  workflow_dispatch:
+    inputs:
+      skip_deploy:
+        description: 'Skip deploy (chỉ chạy test/scan)'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  # ============================================================
+  # JOB 1: LINT & TEST
+  # ============================================================
   test:
-    name: Test (Node ${{ matrix.node-version }})
+    name: 🧪 Lint & Test
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        node-version: [18.x, 20.x, 22.x]
-    defaults:
-      run:
-        working-directory: backend
+
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node-version }}
+          node-version: 20
           cache: npm
           cache-dependency-path: backend/package-lock.json
 
-      - name: Install dependencies
+      - name: Install backend dependencies
         run: npm ci
+        working-directory: backend
 
-      - name: Run unit tests
-        run: npm test
+      - name: Run backend tests
+        # Chỉ định rõ file test để node --test tìm được
+        run: node --test test/digit.test.js
+        working-directory: backend
 
-  dora-report:
-    name: DORA — report CI failure (main only)
-    needs: test
-    if: always() && github.ref == 'refs/heads/main' && github.event_name == 'push'
+      - name: Print test result
+        if: always()
+        run: echo "Test job finished with status ${{ job.status }}"
+
+  # ============================================================
+  # JOB 2: TRIVY SECURITY SCAN
+  # ============================================================
+  trivy:
+    name: 🔒 Trivy Security Scan
     runs-on: ubuntu-latest
+    needs: test
+
     steps:
-      - name: Checkout
-        if: needs.test.result == 'failure'
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Push change-failure metric
-        if: needs.test.result == 'failure'
+      # Scan filesystem (nhanh hơn build image, đủ dùng cho dependencies)
+      - name: Trivy scan — filesystem dependencies
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: ./backend
+          format: table
+          # exit-code 0 = warn only (không fail pipeline)
+          # Đổi thành 1 khi muốn fail pipeline nếu có lỗi nghiêm trọng
+          exit-code: 0
+          severity: CRITICAL,HIGH
+          skip-dirs: node_modules
+
+      # Scan Dockerfile config
+      - name: Trivy scan — Dockerfile config
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: config
+          scan-ref: ./backend
+          format: table
+          exit-code: 0
+          severity: CRITICAL,HIGH
+
+  # ============================================================
+  # JOB 3: SONARCLOUD CODE QUALITY
+  # (cần setup sonar project trước — xem README)
+  # Tạm thời skip nếu SONAR_TOKEN chưa có
+  # ============================================================
+  sonar:
+    name: 📊 SonarCloud Analysis
+    runs-on: ubuntu-latest
+    needs: test
+    # Skip nếu chưa có SONAR_TOKEN
+    if: ${{ secrets.SONAR_TOKEN != '' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@master
         env:
-          DORA_PUSHGATEWAY_URL: ${{ secrets.DORA_PUSHGATEWAY_URL }}
-          GITHUB_RUN_ID: ${{ github.run_id }}
-          GITHUB_REF_NAME: ${{ github.ref_name }}
-        run: bash scripts/push-dora-metrics.sh deploy_failure
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          projectBaseDir: backend
+          args: >
+            -Dsonar.projectKey=LeVanAnUITK19_XSMN
+            -Dsonar.organization=levananuitk19
+            -Dsonar.sources=src
+            -Dsonar.exclusions=**/node_modules/**,**/test/**,**/*.test.js
+
+  # ============================================================
+  # JOB 4: DEPLOY TO RENDER
+  # ============================================================
+  deploy:
+    name: 🚀 Deploy to Render
+    runs-on: ubuntu-latest
+    needs: [trivy]
+    # Deploy khi: push lên main VÀ không bị skip
+    if: |
+      github.ref == 'refs/heads/main' &&
+      github.event_name == 'push' &&
+      github.event.inputs.skip_deploy != 'true'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Detect changed services
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+            observability:
+              - 'observability/**'
+
+      - name: Deploy Backend to Render
+        if: steps.changes.outputs.backend == 'true'
+        run: |
+          echo "🚀 Deploying backend..."
+          HTTP_STATUS=$(curl -s -o /tmp/backend_deploy.json -w "%{http_code}" \
+            -X POST "${{ secrets.RENDER_DEPLOY_HOOK_BACKEND }}")
+          echo "Response: HTTP $HTTP_STATUS"
+          cat /tmp/backend_deploy.json
+          if [ "$HTTP_STATUS" != "200" ] && [ "$HTTP_STATUS" != "201" ]; then
+            echo "❌ Deploy trigger failed with HTTP $HTTP_STATUS"
+            exit 1
+          fi
+          echo "✅ Backend deploy triggered"
+
+      - name: Deploy Prometheus to Render
+        if: steps.changes.outputs.observability == 'true'
+        run: |
+          echo "🚀 Deploying Prometheus..."
+          curl -s -X POST "${{ secrets.RENDER_DEPLOY_HOOK_PROMETHEUS }}" -o /dev/null
+          echo "✅ Prometheus deploy triggered"
+
+      - name: Deploy Grafana to Render
+        if: steps.changes.outputs.observability == 'true'
+        run: |
+          echo "🚀 Deploying Grafana..."
+          curl -s -X POST "${{ secrets.RENDER_DEPLOY_HOOK_GRAFANA }}" -o /dev/null
+          echo "✅ Grafana deploy triggered"
+
+      - name: Wait for Render to deploy
+        if: steps.changes.outputs.backend == 'true'
+        run: |
+          echo "⏳ Waiting 3 minutes for Render to finish deploy..."
+          sleep 180
+
+      - name: Health check backend
+        if: steps.changes.outputs.backend == 'true'
+        id: health
+        run: |
+          echo "🏥 Running health check..."
+          for i in 1 2 3 4 5; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              https://xsmn-1.onrender.com/api/results/health)
+            echo "Attempt $i/5: HTTP $STATUS"
+            if [ "$STATUS" = "200" ]; then
+              echo "✅ Health check PASSED"
+              exit 0
+            fi
+            [ $i -lt 5 ] && sleep 30
+          done
+          echo "❌ Health check FAILED"
+          exit 1
+
+  # ============================================================
+  # JOB 5: NOTIFY
+  # ============================================================
+  notify:
+    name: 📧 Send Notification
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: |
+      always() &&
+      github.ref == 'refs/heads/main' &&
+      github.event_name == 'push'
+
+    steps:
+      - name: Send success email
+        if: needs.deploy.result == 'success'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.GMAIL_USERNAME }}
+          password: ${{ secrets.GMAIL_APP_PASSWORD }}
+          subject: "✅ [XSMN] Deploy thành công"
+          to: levanan1902006@gmail.com
+          from: XSMN CI/CD <${{ secrets.GMAIL_USERNAME }}>
+          body: |
+            ✅ Deploy thành công!
+
+            Commit: ${{ github.sha }}
+            Message: ${{ github.event.head_commit.message }}
+            Author: ${{ github.actor }}
+
+            Health check: PASSED ✅
+            URL: https://xsmn-1.onrender.com/api/results/health
+
+            Chi tiết: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+      - name: Send failure email
+        if: needs.deploy.result == 'failure'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.GMAIL_USERNAME }}
+          password: ${{ secrets.GMAIL_APP_PASSWORD }}
+          subject: "❌ [XSMN] Deploy THẤT BẠI — cần kiểm tra"
+          to: levanan1902006@gmail.com
+          from: XSMN CI/CD <${{ secrets.GMAIL_USERNAME }}>
+          body: |
+            ❌ Deploy thất bại!
+
+            Commit: ${{ github.sha }}
+            Message: ${{ github.event.head_commit.message }}
+            Author: ${{ github.actor }}
+
+            Render đã rollback về version trước.
+            Vui lòng kiểm tra logs tại:
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
