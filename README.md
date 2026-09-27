@@ -1,68 +1,157 @@
-# 🎰 Lottery App - Xổ Số Miền Nam
+# 🎰 Xổ Số Miền Nam
 
-Ứng dụng tra cứu kết quả xổ số miền Nam theo thời gian thực, gồm 3 thành phần: **Backend API**, **Crawl Service** và **Frontend Flutter**.
+Ứng dụng tra cứu kết quả xổ số miền Nam, gồm **Backend API**, **Crawl Service**, **Frontend Flutter** và hệ thống **Monitoring + CI/CD** đầy đủ.
+
+[![CI/CD Pipeline](https://github.com/LeVanAnUITK19/XSMN/actions/workflows/ci.yml/badge.svg)](https://github.com/LeVanAnUITK19/XSMN/actions/workflows/ci.yml)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=LeVanAnUITK19_XSMN&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=LeVanAnUITK19_XSMN)
+[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=LeVanAnUITK19_XSMN&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=LeVanAnUITK19_XSMN)
 
 ---
 
-## Kiến trúc
+## Mục lục
+
+- [Kiến trúc hệ thống](#kiến-trúc-hệ-thống)
+- [Luồng xử lý request](#luồng-xử-lý-request)
+- [CI/CD Pipeline](#cicd-pipeline)
+- [Backend](#backend)
+- [Crawl Service](#crawl-service)
+- [Frontend](#frontend)
+- [Monitoring](#monitoring)
+- [Load Test](#load-test)
+- [Docker](#docker)
+- [Deploy lên Render](#deploy-lên-render)
+
+---
+
+## Kiến trúc hệ thống
 
 ```
-lottery-app/
-├── backend/        # REST API (Node.js + Express + MongoDB + Redis)
-├── crawl/          # Script crawl kết quả từ web (Puppeteer)
-└── frontend/       # Ứng dụng Flutter (mobile/web)
+XSMN/
+├── backend/        # REST API — Node.js + Express + MongoDB + Redis
+├── crawl/          # Crawl service — Puppeteer
+├── frontend/       # Flutter app (Android/iOS)
+├── observability/  # Prometheus + Grafana
+├── test/           # k6 load test
+└── docs/           # Tài liệu và diagrams
 ```
+
+**Stack công nghệ:**
+
+| Layer | Công nghệ |
+|-------|-----------|
+| API | Node.js 20, Express 5, ES Modules |
+| Database | MongoDB Atlas (Mongoose) |
+| Cache | Redis (Upstash/ioredis) |
+| CDN | Cloudflare Workers |
+| Frontend | Flutter (Android/iOS) |
+| Monitoring | Prometheus + Grafana + prom-client |
+| CI/CD | GitHub Actions |
+| Security scan | Trivy + SonarCloud |
+| Deploy | Render.com |
+
+---
+
+## Luồng xử lý request
+
+![Request Flow](docs/request_flow.png)
+
+**Tóm tắt luồng:**
+
+```
+Flutter App
+    │
+    ├── Có local cache (SharedPreferences < 12h)?
+    │   ├── CÓ  → Hiển thị ngay + fetch ngầm ở background
+    │   └── KHÔNG → Hiện WaitPage → fetch API
+    │
+    ▼
+Cloudflare Worker (CDN)
+    │
+    ├── Edge cache HIT (~40%)  → Trả ngay ~20ms
+    └── Edge cache MISS (~60%) → Forward đến Render
+            │
+            ▼
+        Render Backend (Node.js)
+            │
+            ├── Redis cache HIT  → Trả ngay ~5ms
+            └── Redis cache MISS → Query MongoDB → lưu Redis → trả về
+```
+
+**Kết quả load test (1000 concurrent users qua Cloudflare):**
+
+| Metric | Giá trị |
+|--------|---------|
+| Req/sec | 849 |
+| Avg Latency | 301ms |
+| P95 Latency | 900ms |
+| Error Rate | 0.01% |
+
+---
+
+## CI/CD Pipeline
+
+![CI/CD Pipeline](docs/ci-pipeline.gif)
+
+**Luồng khi push lên `main`:**
+
+```
+git push main
+    │
+    ├── 🧪 Test      — node --test (unit tests)
+    │
+    ├── 🔒 Trivy     — scan vulnerabilities Dockerfile + dependencies
+    │
+    ├── 📊 SonarCloud — code quality, security hotspots
+    │
+    ├── 🚀 Deploy    — trigger Render deploy hook (chỉ service có thay đổi)
+    │       │
+    │       ├── backend/**    → deploy Backend
+    │       └── observability/** → deploy Prometheus + Grafana
+    │
+    └── 📧 Notify   — gửi email kết quả deploy
+            ├── ✅ Thành công → "Deploy thành công"
+            └── ❌ Thất bại  → "Deploy thất bại — Render đã rollback"
+```
+
+**GitHub Secrets cần thiết:**
+
+| Secret | Mô tả |
+|--------|-------|
+| `RENDER_DEPLOY_HOOK_BACKEND` | Deploy hook URL của Backend service |
+| `RENDER_DEPLOY_HOOK_PROMETHEUS` | Deploy hook URL của Prometheus service |
+| `RENDER_DEPLOY_HOOK_GRAFANA` | Deploy hook URL của Grafana service |
+| `SONAR_TOKEN` | Token từ SonarCloud |
+| `GMAIL_USERNAME` | Gmail để gửi email thông báo |
+| `GMAIL_APP_PASSWORD` | Gmail App Password |
 
 ---
 
 ## Backend
 
-### Công nghệ
-- Node.js (ESM), Express 5
-- MongoDB (Mongoose) — lưu trữ kết quả
-- Redis (Upstash/ioredis) — cache API
-- Puppeteer — crawl dữ liệu nội bộ
-- node-cron — lên lịch tự động
-
-### Cài đặt & chạy
-
-```bash
-cd backend
-npm install
-npm run dev      # development (nodemon)
-npm start        # production
-```
-
-### Biến môi trường (`backend/.env`)
-
-```env
-PORT=3000
-MONGODB_CONNECTIONSTRING=mongodb+srv://...
-REDIS_URL=rediss://...
-```
-
 ### API Endpoints
 
-| Method | Endpoint                        | Mô tả                              |
-|--------|---------------------------------|------------------------------------|
-| GET    | `/api/results`                  | Lấy tất cả kết quả (có cache)      |
-| GET    | `/api/results/filter`           | Lọc theo `region` và/hoặc `date`   |
-| GET    | `/api/results/filter-province`  | Lọc theo `province` và/hoặc `date` |
-| POST   | `/api/results`                  | Tạo mới kết quả                    |
-| PUT    | `/api/results`                  | Upsert kết quả (crawl cập nhật)    |
-| GET    | `/api/results/health`           | Health check                       |
+| Method | Endpoint | Mô tả |
+|--------|----------|-------|
+| GET | `/api/results` | Lấy kết quả (pagination, Redis cache 30 phút) |
+| GET | `/api/results/filter` | Lọc theo `region`, `date` |
+| GET | `/api/results/filter-province` | Lọc theo `province`, `date` |
+| POST | `/api/results` | Tạo mới kết quả |
+| PUT | `/api/results` | Upsert kết quả (crawl dùng) |
+| GET | `/api/results/health` | Health check |
+| GET | `/metrics` | Prometheus metrics (Bearer token) |
 
-**Query params ví dụ:**
+**Query params:**
 ```
-GET /api/results/filter?region=mien-nam&date=2026-04-22
-GET /api/results/filter-province?province=TP.HCM&date=2026-04-22
+GET /api/results?page=1&limit=20
+GET /api/results/filter?region=mien-nam&date=2026-09-27
+GET /api/results/filter-province?province=TP.HCM&date=2026-09-27
 ```
 
 ### Cấu trúc dữ liệu
 
 ```json
 {
-  "date": "2026-04-22T00:00:00.000Z",
+  "date": "2026-09-27T00:00:00.000Z",
   "region": "mien-nam",
   "provinces": [
     {
@@ -83,194 +172,168 @@ GET /api/results/filter-province?province=TP.HCM&date=2026-04-22
 }
 ```
 
+### Cài đặt & chạy
+
+```bash
+cd backend
+cp .env.example .env    # điền các biến môi trường
+npm install
+npm run dev             # development (nodemon)
+npm start               # production
+npm test                # chạy unit tests
+```
+
+### Biến môi trường (`backend/.env`)
+
+```env
+PORT=3000
+MONGODB_CONNECTIONSTRING=mongodb+srv://...
+REDIS_URL=rediss://...
+METRICS_TOKEN=          # Bearer token bảo vệ /metrics
+```
+
 ---
 
 ## Crawl Service
 
-Script chạy độc lập, crawl kết quả từ [minhngoc.net.vn](https://www.minhngoc.net.vn) và gửi lên API.
+Crawl kết quả từ [xoso.com.vn](https://xoso.com.vn) bằng Puppeteer, gửi lên API.
 
 ```bash
 cd crawl
 npm install
-
-# Tạo mới kết quả ngày hôm nay (POST)
-node crawlXSMN_POST.js
-
-# Cập nhật kết quả ngày hôm nay (PUT/upsert)
-node crawlXSMN_PUT.js
+node crawlXSMN_POST.js  # Tạo mới kết quả hôm nay
+node crawlXSMN_PUT.js   # Upsert kết quả hôm nay
 ```
 
-> Thường được chạy tự động qua **GitHub Actions** theo lịch hàng ngày.
+Chạy tự động qua **GitHub Actions** (`.github/workflows/cron_job_post.yml`) theo lịch hàng ngày lúc 14:00–14:45 (UTC+7).
 
 ---
 
 ## Frontend
 
-Ứng dụng Flutter hiển thị kết quả xổ số và tính năng **dò vé số tự động**.
+Ứng dụng Flutter cho Android/iOS.
 
-### Tính năng
+**Tính năng:**
 - Xem kết quả xổ số miền Nam theo ngày
-- Lọc theo tỉnh thành
-- Dò vé số 6 chữ số — tự động kiểm tra tất cả các giải (G8 → ĐB, giải phụ, giải khuyến khích)
+- Vuốt trái/phải để chuyển ngày
+- Lọc hiển thị: đầy đủ / 3 số / 2 số
+- Dò vé số 6 chữ số tự động (G8 → ĐB, kèm tính thuế TNCN)
+- Chia sẻ kết quả dạng ảnh
+- Cache local (offline mode)
+- Native splash screen
 
-### Chạy frontend
-
+**Chạy:**
 ```bash
 cd frontend
 flutter pub get
 flutter run
 ```
 
----
-
-## Triển khai
-
-- **Backend** deploy trên [Render](https://render.com) tại `https://xsmn.onrender.com`
-- **Crawl** chạy qua GitHub Actions (`.github/workflows/`)
-- **Frontend** build Flutter web hoặc Android/iOS
-
-### CI/CD (GitHub Actions)
-
-Hai workflow tach biet:
-
-| File | Vai tro | Trigger |
-|------|---------|---------|
-| `.github/workflows/ci.yml` | **CI** — test backend (matrix Node 18 / 20 / 22) | PR vao `main`, push len `main` |
-| `.github/workflows/cd.yml` | **CD** — build Docker, push GHCR, deploy Render | Sau khi CI pass tren `main` (push), hoac `workflow_dispatch` |
-
-**Luong khi mo Pull Request:**
-
-```
-PR -> CI (test x3 Node) -> xong (khong co CD)
-```
-
-**Luong khi push / merge len main:**
-
-```
-push main -> CI (test) -> pass -> CD (build image -> push ghcr.io -> Render hook)
-```
-
-Chi tiet CD:
-
-1. **build-and-push** — build tu `backend/Dockerfile`, dang len `ghcr.io/<owner>/<repo>` (tag `latest` + short SHA).
-2. **deploy** (tuy chon) — neu da dat secret `RENDER_DEPLOY_HOOK_URL`, goi hook de Render khoi dong lai dich vu.
-
-Cau hinh Render: Dashboard service → **Deploy** → **Deploy Hook** → copy URL → GitHub repo → **Settings** → **Secrets and variables** → **Actions** → them `RENDER_DEPLOY_HOOK_URL`.
-
-Keo image ve may (sau khi da push len `main`):
-
+**Build release APK:**
 ```bash
-docker pull ghcr.io/<owner>/<repo>:latest
+flutter build apk --release
 ```
-
-### DORA Metrics (Prometheus + Grafana)
-
-Theo doi 4 chi so DORA tu dong:
-
-| Thanh phan | File / URL |
-|------------|------------|
-| Push metrics tu CI/CD | `scripts/push-dora-metrics.sh`, secret `DORA_PUSHGATEWAY_URL` |
-| Pushgateway | `backend/docker-compose.monitoring.yml` — port **9091** |
-| Alert rules | `backend/prometheus/dora-alerts.yml` |
-| Dashboard DORA | `backend/grafana/dashboards/dora.json` |
-| Dashboard app | `backend/grafana/dashboards/xsmn.json` |
-| Bao cao phan tich | [DORA.md](./DORA.md) |
-
-**Demo local — dữ liệu THẬT từ GitHub (không seed):**
-
-```powershell
-cd backend
-docker compose -f docker-compose.monitoring.yml up -d
-cd ..
-# Can GITHUB_TOKEN (PAT scope repo) hoac da chay: gh auth login
-$env:GITHUB_TOKEN = "ghp_..."
-powershell -ExecutionPolicy Bypass -File .\scripts\sync-dora-from-github.ps1 -ReplaceAll
-```
-
-Tren Grafana, series hien `pr-6`, `pr-20`... — merge PR that tu repo.
-
-**Chi dung seed khi khong co token GitHub:** `scripts/seed-dora-demo.ps1`
-
-Mo trinh duyet:
-
-| Dich vu | URL | Dang nhap |
-|---------|-----|-----------|
-| Grafana | http://localhost:3001 | admin / admin |
-| Prometheus | http://localhost:9090 | — |
-| Alerts | http://localhost:9090/alerts | — |
-| Pushgateway | http://localhost:9091 | — |
-
-Trong Grafana: **Dashboards → XSMN → XSMN DORA Metrics** (4 panel chinh + charts).
-
-**Noi dung demo truoc giám khao (5–7 phut):**
-
-1. Giai thich 4 metric DORA tren dashboard (Frequency, Lead Time, MTTR, CFR).
-2. Mo Prometheus → **Alerts** — chi 4 rule DORA.
-3. Chi `scripts/seed-dora-demo.sh` — du lieu tu lich su that (24 deploy, CFR 8.3%).
-4. (Tu chon) Merge PR vao `main` — CD push metric moi len Pushgateway (can expose Pushgateway qua ngrok + secret GitHub).
-
-**Ket noi CI/CD voi Pushgateway (production demo):**
-
-1. Chay Pushgateway tren may co IP public (hoac [ngrok](https://ngrok.com) port 9091).
-2. GitHub repo → Settings → Secrets → `DORA_PUSHGATEWAY_URL` = `https://<host>:9091`.
-3. Moi lan CD thanh cong / CI fail tren `main` → metric tu dong cap nhat Grafana.
 
 ---
 
-## Docker (nang cao)
+## Monitoring
 
-Du an da ho tro multi-container qua `docker-compose.yml`:
+Hệ thống monitoring gồm Prometheus + Grafana, deploy trên Render.
 
-- `backend`: REST API
-- `mongodb`: luu tru du lieu
-- `redis`: cache API
-- `crawl-put` / `crawl-post`: worker crawl (chay theo profile)
+**Metrics được theo dõi:**
 
-### 1) Chay stack chinh (backend + mongo + redis)
+| Nhóm | Metrics |
+|------|---------|
+| System | CPU, RSS Memory, Heap Used/Total, Event Loop Lag |
+| HTTP | Requests/sec, Latency (P50/P90/P95/P99), Error Rate |
+| Traffic | Inbound/Outbound bytes/sec |
+| Endpoints | Top routes, slowest routes, most errors |
+
+**Chạy monitoring local:**
+```bash
+cd observability
+cp .env.example .env    # điền GF_SECURITY_ADMIN_PASSWORD
+docker compose --env-file .env up -d
+```
+
+| Service | URL |
+|---------|-----|
+| Prometheus | http://localhost:9090 |
+| Grafana | http://localhost:3000 |
+
+Xem thêm: [observability/README.md](observability/README.md)
+
+---
+
+## Load Test
+
+Dùng [k6](https://k6.io) để test chịu tải.
 
 ```bash
+# Cài k6
+winget install k6 --source winget
+
+# Test bình thường (30 VUs)
+k6 run test/test.js
+
+# Stress test (đến 1000 VUs)
+k6 run -e MODE=stress test/test.js
+
+# Spike test (đột biến traffic)
+k6 run -e MODE=spike test/test.js
+
+# Test local
+k6 run -e BASE_URL=http://localhost:3000 test/test.js
+```
+
+**Kết quả tóm tắt (qua Cloudflare, 1000 VUs):**
+
+```
+✅ 0–500 VUs   → P95 < 500ms,  error ~0%
+✅ 500–800 VUs → P95 < 900ms,  error ~0%
+⚠️  800–1000 VUs → P95 ~900ms, timeout nhỏ
+Peak: 849 req/sec, 194,678 total requests
+```
+
+---
+
+## Docker
+
+Chạy toàn bộ stack local:
+
+```bash
+# Backend + MongoDB + Redis
 docker compose up -d --build
-```
 
-Kiem tra:
-
-```bash
+# Kiểm tra
 docker compose ps
 curl http://localhost:3000/api/results/health
-```
 
-### 2) Chay crawler thu cong trong cung network Docker
-
-```bash
-# Upsert ket qua (PUT)
+# Chạy crawler
 docker compose --profile crawler run --rm crawl-put
-
-# Tao moi ket qua (POST)
 docker compose --profile crawler run --rm crawl-post
-```
 
-### 3) Dung va xoa stack
-
-```bash
+# Dừng
 docker compose down
-```
 
-Neu muon xoa ca volume data:
-
-```bash
+# Dừng và xóa volumes
 docker compose down -v
 ```
 
-### Ghi chu
-
-- Crawler dung bien moi truong `API_URL` (mac dinh van la endpoint Render neu khong set).
-- Trong Compose, `API_URL` duoc tro den `http://backend:3000/api/results` de goi noi bo qua service name.
-- `backend` co healthcheck va chi start sau khi `mongodb` + `redis` healthy.
-
 ---
 
-## Ghi chú
+## Deploy lên Render
 
-- Cache Redis TTL: 2 phút cho endpoint `GET /api/results`
-- Khi PUT thành công, cache `results:all` bị xóa để đảm bảo dữ liệu mới nhất
-- Index MongoDB: `{ date, region }` unique
+**3 services cần deploy:**
+
+| Service | Root Directory | Env vars quan trọng |
+|---------|---------------|---------------------|
+| Backend | `backend/` | `MONGODB_CONNECTIONSTRING`, `REDIS_URL`, `METRICS_TOKEN` |
+| Prometheus | `observability/prometheus/` | `BACKEND_TARGET`, `METRICS_TOKEN` |
+| Grafana | `observability/grafana/` | `GF_SECURITY_ADMIN_PASSWORD`, `GF_PROMETHEUS_URL` |
+
+**URL production:**
+- Backend: https://xsmn-1.onrender.com
+- CDN (Cloudflare Worker): https://long-queen-5b3a.levanan1902006.workers.dev
+
+> ⚠️ Render free tier: service sẽ sleep sau 15 phút không có traffic. Data Prometheus mất khi redeploy (ephemeral storage).
