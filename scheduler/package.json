@@ -1,0 +1,18 @@
+{
+  "name": "xsmn-scheduler",
+  "version": "1.0.0",
+  "description": "Render Cron Job scheduler for XSMN daily lottery results",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test tests/"
+  },
+  "dependencies": {
+    "dotenv": "^17.3.1",
+    "puppeteer": "^24.40.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
