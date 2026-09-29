@@ -1,12 +1,12 @@
 # ============================================================
 # Dockerfile — XSMN Scheduler (Render Cron Job)
 #
-# Build context phải là REPO ROOT để truy cập crawl/ nếu cần.
-# Ví dụ từ repo root:
-#   docker build -f scheduler/Dockerfile -t xsmn-scheduler .
+# Render cấu hình:
+#   Root Directory: scheduler
+#   Dockerfile Path: Dockerfile   (hoặc scheduler/Dockerfile nếu root trống)
 #
-# Scheduler không dùng code từ crawl/ trực tiếp (tránh import side-effect),
-# nhưng logic crawl được viết lại trong crawlerAdapter.js theo cùng pattern.
+# Docker build context = thư mục scheduler/ (Render tự set)
+# Nên tất cả COPY path là relative bên trong scheduler/
 # ============================================================
 
 FROM node:20-slim
@@ -15,7 +15,6 @@ FROM node:20-slim
 RUN apt-get update && apt-get install -y \
     chromium \
     fonts-liberation \
-    libappindicator3-1 \
     libasound2 \
     libatk-bridge2.0-0 \
     libatk1.0-0 \
@@ -41,15 +40,14 @@ ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 # Timezone Việt Nam
 ENV TZ=Asia/Ho_Chi_Minh
 
-# Copy package files trước để tận dụng Docker layer cache
-COPY scheduler/package*.json ./
+# Copy package files (context = scheduler/, nên không cần prefix)
+COPY package*.json ./
 
 RUN npm ci --omit=dev
 
-# Copy source scheduler
-COPY scheduler/src ./src
+# Copy source code
+COPY src ./src
 
 # Không copy .env — inject qua Render environment variables
 
-# Entry point
 CMD ["node", "src/index.js"]
