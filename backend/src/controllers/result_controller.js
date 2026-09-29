@@ -140,6 +140,23 @@ export const createResult = async (req, res) => {
   }
 };
 
+// ── Helper: xóa cache theo pattern dùng SCAN (non-blocking) ──────
+// redis.keys() là O(N) blocking — block toàn bộ Redis khi keyspace lớn
+// redis.scan() incremental, không block, an toàn cho production
+async function deleteCacheByPattern(pattern) {
+  let cursor = '0';
+  let totalDeleted = 0;
+  do {
+    const [next, keys] = await redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
+    cursor = next;
+    if (keys.length > 0) {
+      await redis.del(...keys);
+      totalDeleted += keys.length;
+    }
+  } while (cursor !== '0');
+  return totalDeleted;
+}
+
 // ── PUT /api/results ──────────────────────────────────────────────
 export const saveResult = async (req, res) => {
   try {
@@ -147,11 +164,8 @@ export const saveResult = async (req, res) => {
     const result = await saveResultService({ date, region, provinces });
 
     // Xóa tất cả cache liên quan khi có data mới
-    // Dùng pattern delete để clear tất cả pages
-    const keys = await redis.keys('results:*');
-    if (keys.length > 0) {
-      await redis.del(...keys);
-    }
+    // Dùng SCAN thay cho KEYS để tránh block Redis
+    await deleteCacheByPattern('results:*');
 
     res.json(result);
   } catch (err) {
