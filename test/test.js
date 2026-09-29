@@ -43,13 +43,10 @@ const MODE = __ENV.MODE || 'normal';
 export const options = {
   stages: MODE === 'stress'
     ? [
-      { duration: '30s', target: 100 }, // bắt đầu thử
-      { duration: '30s', target: 300 }, // near breaking
-      { duration: '30s', target: 500 }, // breaking point
-      { duration: '30s', target: 700 },
-      { duration: '30s', target: 900 },
-      { duration: '30s', target: 1000 },
-      { duration: '30s', target: 0 }, // cool down
+      { duration: '60s', target: 500 }, // breaking point
+      { duration: '60s', target: 700 },
+      { duration: '60s', target: 1000 },
+      { duration: '60s', target: 1500 }, // cool down
     ]
     : MODE === 'spike'
       ? [
