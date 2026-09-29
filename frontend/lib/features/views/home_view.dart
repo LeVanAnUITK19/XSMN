@@ -63,6 +63,7 @@ class _HomePageState extends State<HomePageView> {
   }
 
   Future<void> _shareAsImage(String displayDate) async {
+    if (vm.result == null) return;
     try {
       final provinces = vm.result!.provinces;
       final tableData = transformData(provinces, selected);
@@ -202,20 +203,98 @@ class _HomePageState extends State<HomePageView> {
     if (vm.error != null) {
       return Scaffold(
         key: _scaffoldKey,
-        body: Center(child: Text(vm.error!)),
+        backgroundColor: Colors.white,
+        body: SafeArea(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // Icon lỗi
+                  Container(
+                    width: 100,
+                    height: 100,
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade50,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.wifi_off_rounded,
+                      size: 52,
+                      color: Colors.red.shade400,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Tiêu đề
+                  const Text(
+                    'Không thể tải dữ liệu',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+
+                  // Mô tả
+                  Text(
+                    'Máy chủ đang bận hoặc mất kết nối.\nVui lòng thử lại sau giây lát.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey.shade600,
+                      height: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+
+                  // Nút tải lại
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () => vm.load(),
+                      icon: const Icon(Icons.refresh_rounded, size: 20),
+                      label: const Text(
+                        'Tải lại',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        elevation: 0,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       );
     }
 
-    if (vm.result == null) {
+    if (vm.result == null && !vm.isRefreshing) {
       return Scaffold(
         key: _scaffoldKey,
         body: const Center(child: Text('Không có dữ liệu')),
       );
     }
 
-    final provinces = vm.result!.provinces;
-    final tableData = transformData(provinces, selected);
-    final dt = vm.result!.date.toLocal();
+    // Khi isRefreshing=true nhưng result chưa có → vẫn show body với bảng trống
+    final provinces = vm.result?.provinces ?? [];
+    final tableData = vm.result != null
+        ? transformData(provinces, selected)
+        : <Map<String, dynamic>>[];
+    final dt = vm.result?.date.toLocal() ?? DateTime.now();
 
     final date = DateFormat('EEEE, dd/MM/yyyy', 'vi_VN').format(dt);
 
@@ -231,10 +310,7 @@ class _HomePageState extends State<HomePageView> {
             color: Colors.white,
           ),
         ),
-        actions: [
-          const SizedBox(width: 12),
-        ],
-
+        actions: const [SizedBox(width: 12)],
         backgroundColor: const Color.fromARGB(255, 240, 17, 1),
       ),
       drawer: MyDrawer(
@@ -243,6 +319,35 @@ class _HomePageState extends State<HomePageView> {
 
       body: Column(
         children: [
+          // Banner cập nhật — hiển thị khi đang fetch ngầm
+          if (vm.isRefreshing)
+            Container(
+              width: double.infinity,
+              color: const Color.fromARGB(255, 240, 17, 1),
+              padding: const EdgeInsets.symmetric(vertical: 7),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  ),
+                  SizedBox(width: 10),
+                  Text(
+                    'Đang tải dữ liệu mới...',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           Expanded(
             flex: 1,
             child: Container(

@@ -1,6 +1,7 @@
 import express from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
+import compression from 'compression';
 import { connectDB } from './src/config/db.js';
 import resultRoutes from './src/routes/result_route.js';
 import register from './src/monitoring/metrics.js';
@@ -11,6 +12,8 @@ dotenv.config();
 const app = express();
 
 app.use(cors());
+// Nén gzip tất cả response >= 1KB — giảm ~70-80% bandwidth
+app.use(compression());
 app.use(express.json());
 
 // HTTP metrics middleware — phải đặt trước tất cả routes

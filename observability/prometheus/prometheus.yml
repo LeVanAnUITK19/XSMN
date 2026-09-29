@@ -1,7 +1,7 @@
 global:
-  scrape_interval: 15s       # Scrape mỗi 15 giây
-  evaluation_interval: 15s   # Đánh giá alert rules mỗi 15 giây
-  scrape_timeout: 10s
+  scrape_interval: 5s       # Scrape mỗi 5 giây (realtime hơn)
+  evaluation_interval: 5s
+  scrape_timeout: 4s
 
 # Alert manager (để trống nếu chưa dùng)
 # alerting:
@@ -17,7 +17,7 @@ scrape_configs:
   # Job scrape backend XSMN
   - job_name: 'xsmn-backend'
     metrics_path: '/metrics'
-    scrape_interval: 15s
+    scrape_interval: 5s
     # scheme mặc định là http. Render public URL dùng https nên entrypoint.sh sẽ set scheme=https
 
     # Nếu METRICS_TOKEN được set, Prometheus gửi Bearer token

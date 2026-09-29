@@ -43,9 +43,7 @@ const MODE = __ENV.MODE || 'normal';
 export const options = {
   stages: MODE === 'stress'
     ? [
-      { duration: '30s', target: 50 }, // bắt đầu thử
-      { duration: '30s', target: 100 }, // áp lực
-      { duration: '30s', target: 200 }, // heavy stress
+      { duration: '30s', target: 100 }, // bắt đầu thử
       { duration: '30s', target: 300 }, // near breaking
       { duration: '30s', target: 500 }, // breaking point
       { duration: '30s', target: 700 },

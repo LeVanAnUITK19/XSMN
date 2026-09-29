@@ -8,11 +8,13 @@ class ProvinceResult {
     final fullMap = (json['full'] as Map<String, dynamic>).map(
       (key, value) => MapEntry(key, List<String>.from(value)),
     );
-    return ProvinceResult(
-      province: json['province'],
-      full: fullMap,
-    );
+    return ProvinceResult(province: json['province'], full: fullMap);
   }
+
+  Map<String, dynamic> toJson() => {
+    'province': province,
+    'full': full,
+  };
 }
 
 class LotteryResult {
@@ -38,4 +40,11 @@ class LotteryResult {
           .toList(),
     );
   }
+
+  Map<String, dynamic> toJson() => {
+    '_id': id,
+    'date': date.toIso8601String(),
+    'region': region,
+    'provinces': provinces.map((p) => p.toJson()).toList(),
+  };
 }

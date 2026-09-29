@@ -3,8 +3,8 @@ import { saveResult as saveResultService } from "../services/saveResult.js";
 import redis from "../services/redis.js";
 
 // ── Cache keys ────────────────────────────────────────────────────
-const CACHE_KEY     = 'results:all:p1:l20'; // bao gồm page+limit để tránh stale cache
-const CACHE_TTL     = 60 * 2;               // 2 phút — có thể update
+const CACHE_KEY = 'results:all:p1:l20';
+const CACHE_TTL = 60 * 30;            // 30 phút — data xổ số chỉ update 1 lần/ngày
 
 const filterCacheKey = (params) =>
   `results:filter:${JSON.stringify(params)}`;
@@ -50,9 +50,10 @@ export const getResults = async (req, res) => {
       },
     };
 
-    // 3. Lưu cache
     await redis.setex(cacheKey, CACHE_TTL, JSON.stringify(payload));
 
+    // Cache-Control: client/CDN cache 5 phút, stale-while-revalidate thêm 1 phút
+    res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=60');
     res.json(payload);
   } catch (err) {
     res.status(500).json({ error: err.message });
