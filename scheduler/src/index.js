@@ -1,20 +1,23 @@
 /**
- * index.js — Entry point của Scheduler
+ * index.js — Entry point của Scheduler (Background Worker mode)
  *
- * Render Cron Job khởi chạy file này theo lịch cấu hình.
- * Scheduler thực hiện các lượt kiểm tra trong cửa sổ thời gian,
- * rồi tự kết thúc khi hoàn thành hoặc hết giờ.
+ * Process chạy liên tục, KHÔNG tự exit.
+ * Deploy trên Render như Background Worker — không scan port, không restart.
  *
- * Không có vòng lặp vô hạn, không giữ process sống vô thời hạn.
+ * Cơ chế:
+ *   - Vòng lặp vô hạn kiểm tra giờ VN mỗi CHECK_INTERVAL_SECONDS
+ *   - Nằm trong khung giờ → chạy job crawl
+ *   - Ngoài khung giờ → ngủ đến lần tick tiếp theo
+ *   - Sau khi crawl COMPLETE → ngủ đến đầu cửa sổ ngày hôm sau
  *
- * Cách chạy:
- *   node src/index.js                    → chạy theo cửa sổ thời gian cấu hình
- *   node src/index.js --date=2026-09-28  → override ngày
- *   node src/index.js --once             → chạy một lần và thoát (để test)
+ * Chạy local (test nhanh):
+ *   node src/index.js --once     → chạy một lần rồi exit (bypass time window)
+ *   node src/index.js --date=2026-09-29 --once
  */
 
 import { config, validateConfig } from './config.js';
-validateConfig(); // Kiểm tra env vars bắt buộc — thoát nếu thiếu
+validateConfig();
+
 import { logger } from './utils/logger.js';
 import { runUpdateJob } from './jobs/updateDailyResults.js';
 import { sleep } from './utils/retry.js';
@@ -24,19 +27,13 @@ import { sleep } from './utils/retry.js';
 // ────────────────────────────────────────────────────────────────
 const args = process.argv.slice(2);
 const overrideDate = args.find((a) => a.startsWith('--date='))?.split('=')[1] || null;
-const runOnce = args.includes('--once');
+const runOnce      = args.includes('--once');
 
 // ────────────────────────────────────────────────────────────────
-// Parse thời gian từ chuỗi HH:MM (VN timezone)
+// Helpers thời gian VN
 // ────────────────────────────────────────────────────────────────
-function parseWindowTime(timeStr) {
-  const [hh, mm] = timeStr.split(':').map(Number);
-  return { hh, mm };
-}
 
-/**
- * Lấy thời gian VN hiện tại dưới dạng số phút từ 00:00.
- */
+/** Trả về số phút từ 00:00 theo giờ VN hiện tại */
 function getNowMinutesVN() {
   const vnTime = new Date().toLocaleTimeString('sv-SE', {
     timeZone: 'Asia/Ho_Chi_Minh',
@@ -48,134 +45,160 @@ function getNowMinutesVN() {
   return hh * 60 + mm;
 }
 
-/**
- * Chờ đến cửa sổ thời gian nếu chạy quá sớm.
- */
-async function waitForWindow(windowStartMinutes) {
-  const nowMinutes = getNowMinutesVN();
-  if (nowMinutes >= windowStartMinutes) return;
+/** Parse "HH:MM" → số phút từ 00:00 */
+function parseMinutes(timeStr) {
+  const [hh, mm] = timeStr.split(':').map(Number);
+  return hh * 60 + mm;
+}
 
-  const waitMs = (windowStartMinutes - nowMinutes) * 60 * 1000;
-  const waitMins = Math.ceil(waitMs / 60000);
-  logger.info(`[SCHEDULER] Chờ ${waitMins} phút đến cửa sổ làm việc...`);
-  await sleep(waitMs);
+/** Ngày hôm nay theo giờ VN (YYYY-MM-DD) */
+function getTodayVN() {
+  return new Date().toLocaleDateString('sv-SE', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+  });
+}
+
+/**
+ * Tính ms cần ngủ để đến đầu cửa sổ làm việc ngày hôm sau.
+ * Dùng khi job đã COMPLETE hoặc cửa sổ hôm nay đã qua.
+ */
+function msUntilNextWindowStart(windowStartMinutes) {
+  const nowMinutes = getNowMinutesVN();
+  // Phút còn lại đến nửa đêm + phút từ nửa đêm đến windowStart
+  const minutesLeft = (24 * 60 - nowMinutes) + windowStartMinutes;
+  return minutesLeft * 60 * 1000;
 }
 
 // ────────────────────────────────────────────────────────────────
-// Main
+// Main loop
 // ────────────────────────────────────────────────────────────────
 async function main() {
   logger.info('[SCHEDULER] ============================================');
-  logger.info('[SCHEDULER] XSMN Scheduler khởi động');
+  logger.info('[SCHEDULER] XSMN Scheduler khởi động (Background Worker)');
   logger.info('[SCHEDULER] ============================================', {
     date: overrideDate || '(hôm nay VN)',
     runOnce,
     windowStart: config.JOB_WINDOW_START,
-    windowEnd: config.JOB_WINDOW_END,
+    windowEnd:   config.JOB_WINDOW_END,
     checkIntervalSeconds: config.CHECK_INTERVAL_SECONDS,
   });
 
-  const windowStart = parseWindowTime(config.JOB_WINDOW_START);
-  const windowEnd = parseWindowTime(config.JOB_WINDOW_END);
-  const windowStartMinutes = windowStart.hh * 60 + windowStart.mm;
-  const windowEndMinutes = windowEnd.hh * 60 + windowEnd.mm;
-  const checkIntervalMs = config.CHECK_INTERVAL_SECONDS * 1000;
-
-  // Tracking summary
-  let totalRuns = 0;
-  let created = 0;
-  let updated = 0;
-  let skipped = 0;
-  let failed = 0;
-  let lastStatus = null;
-  const schedulerStart = Date.now();
-
-  // Nếu --once: chạy một lần và thoát ngay (dùng để test)
+  // ── Chế độ --once: dùng để test, chạy xong exit ──────────────
   if (runOnce) {
-    logger.info('[SCHEDULER] Chế độ --once: chạy một lần và thoát');
+    logger.info('[SCHEDULER] Chế độ --once: chạy một lần rồi thoát');
     const result = await runUpdateJob({ date: overrideDate });
-    printFinalSummary([result], Date.now() - schedulerStart);
+    printSummary([result]);
     process.exit(result.action === 'FAILED' ? 1 : 0);
     return;
   }
 
-  // Chờ đến cửa sổ nếu cần (khi chạy thủ công sớm hơn lịch)
-  if (!overrideDate) {
-    await waitForWindow(windowStartMinutes);
-  }
+  const windowStartMinutes = parseMinutes(config.JOB_WINDOW_START);
+  const windowEndMinutes   = parseMinutes(config.JOB_WINDOW_END);
+  const checkIntervalMs    = config.CHECK_INTERVAL_SECONDS * 1000;
 
-  const allResults = [];
+  // Tracking theo ngày để tránh crawl lại sau khi đã COMPLETE
+  let completedDate = null;
 
-  // Vòng lặp trong cửa sổ thời gian
+  // ── Vòng lặp vô hạn ──────────────────────────────────────────
   // eslint-disable-next-line no-constant-condition
   while (true) {
     const nowMinutes = getNowMinutesVN();
+    const todayVN    = getTodayVN();
 
-    // Hết cửa sổ thời gian → kết thúc
-    if (!overrideDate && nowMinutes > windowEndMinutes) {
-      logger.info('[SCHEDULER] Hết cửa sổ thời gian làm việc — kết thúc');
-      break;
+    const insideWindow = nowMinutes >= windowStartMinutes && nowMinutes <= windowEndMinutes;
+    const alreadyDone  = completedDate === todayVN;
+
+    if (!insideWindow) {
+      // Ngoài khung giờ → tính thời gian ngủ thông minh
+      let sleepMs;
+      if (nowMinutes < windowStartMinutes) {
+        // Chưa đến cửa sổ hôm nay → ngủ đến windowStart
+        sleepMs = (windowStartMinutes - nowMinutes) * 60 * 1000;
+        logger.info('[SCHEDULER] Chưa đến cửa sổ làm việc — ngủ đến windowStart', {
+          windowStart: config.JOB_WINDOW_START,
+          sleepMinutes: Math.ceil(sleepMs / 60000),
+        });
+      } else {
+        // Đã qua cửa sổ hôm nay → ngủ đến cửa sổ ngày mai
+        sleepMs = msUntilNextWindowStart(windowStartMinutes);
+        logger.info('[SCHEDULER] Đã qua cửa sổ làm việc hôm nay — ngủ đến ngày mai', {
+          windowStart: config.JOB_WINDOW_START,
+          sleepHours: (sleepMs / 3600000).toFixed(1),
+        });
+        // Reset completedDate để sẵn sàng crawl ngày mới
+        completedDate = null;
+      }
+      await sleep(sleepMs);
+      continue;
     }
 
-    totalRuns++;
-    logger.info(`[SCHEDULER] --- Lượt kiểm tra #${totalRuns} ---`);
-
-    const result = await runUpdateJob({ date: overrideDate });
-    allResults.push(result);
-    lastStatus = result.crawlStatus;
-
-    switch (result.action) {
-      case 'CREATED': created++; break;
-      case 'UPDATED': updated++; break;
-      case 'SKIPPED': skipped++; break;
-      case 'FAILED':  failed++;  break;
+    if (alreadyDone) {
+      // Đã crawl COMPLETE hôm nay → ngủ đến cửa sổ ngày mai
+      const sleepMs = msUntilNextWindowStart(windowStartMinutes);
+      logger.info('[SCHEDULER] Hôm nay đã COMPLETE — ngủ đến ngày mai', {
+        completedDate,
+        sleepHours: (sleepMs / 3600000).toFixed(1),
+      });
+      completedDate = null; // reset để ngày mới chạy lại
+      await sleep(sleepMs);
+      continue;
     }
 
-    // Nếu kết quả đã COMPLETE → kết thúc sớm
+    // ── Trong cửa sổ giờ và chưa COMPLETE → chạy job ────────────
+    logger.info('[SCHEDULER] Trong cửa sổ làm việc — chạy job', {
+      time: new Date().toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }),
+      date: todayVN,
+    });
+
+    const result = await runUpdateJob({ date: overrideDate || null });
+
     if (result.crawlStatus === 'COMPLETE') {
-      logger.info('[SCHEDULER] Kết quả đã COMPLETE — kết thúc sớm ✅');
-      break;
+      logger.info('[SCHEDULER] Crawl COMPLETE ✅ — sẽ không chạy lại hôm nay', {
+        date: todayVN,
+        action: result.action,
+      });
+      completedDate = todayVN;
+      // Ngủ đến cửa sổ ngày mai
+      const sleepMs = msUntilNextWindowStart(windowStartMinutes);
+      logger.info('[SCHEDULER] Ngủ đến cửa sổ ngày mai', {
+        sleepHours: (sleepMs / 3600000).toFixed(1),
+      });
+      await sleep(sleepMs);
+    } else {
+      // INCOMPLETE / EMPTY / FAILED → thử lại sau CHECK_INTERVAL
+      logger.info(`[SCHEDULER] Chưa COMPLETE (${result.crawlStatus}) — thử lại sau ${config.CHECK_INTERVAL_SECONDS}s`, {
+        action: result.action,
+        error:  result.error || undefined,
+      });
+      await sleep(checkIntervalMs);
     }
-
-    // Override date thì chỉ cần chạy một lần
-    if (overrideDate) {
-      logger.info('[SCHEDULER] Override date mode — kết thúc sau một lượt');
-      break;
-    }
-
-    // Kiểm tra còn đủ thời gian cho lượt tiếp không
-    const nowMinutesAfter = getNowMinutesVN();
-    const remainingMs = (windowEndMinutes - nowMinutesAfter) * 60 * 1000;
-
-    if (remainingMs <= checkIntervalMs) {
-      logger.info('[SCHEDULER] Không đủ thời gian cho lượt tiếp theo — kết thúc');
-      break;
-    }
-
-    logger.info(`[SCHEDULER] Chờ ${config.CHECK_INTERVAL_SECONDS}s trước lượt tiếp...`);
-    await sleep(checkIntervalMs);
   }
-
-  printFinalSummary(allResults, Date.now() - schedulerStart);
-
-  // Exit code 1 nếu tất cả đều thất bại
-  process.exit(failed > 0 && created === 0 && updated === 0 ? 1 : 0);
 }
 
-function printFinalSummary(results, durationMs) {
-  const durationSec = Math.round(durationMs / 1000);
+function printSummary(results) {
   logger.info('[SCHEDULER] ============================================');
   logger.info('[SCHEDULER] FINAL SUMMARY');
   logger.info('[SCHEDULER] ============================================', {
-    totalRuns: results.length,
-    created: results.filter((r) => r.action === 'CREATED').length,
-    updated: results.filter((r) => r.action === 'UPDATED').length,
-    skipped: results.filter((r) => r.action === 'SKIPPED').length,
-    failed: results.filter((r) => r.action === 'FAILED').length,
-    lastCrawlStatus: results[results.length - 1]?.crawlStatus || 'N/A',
-    durationSec,
+    totalRuns:       results.length,
+    created:         results.filter((r) => r.action === 'CREATED').length,
+    updated:         results.filter((r) => r.action === 'UPDATED').length,
+    skipped:         results.filter((r) => r.action === 'SKIPPED').length,
+    failed:          results.filter((r) => r.action === 'FAILED').length,
+    lastCrawlStatus: results.at(-1)?.crawlStatus || 'N/A',
   });
 }
+
+// ── Graceful shutdown ─────────────────────────────────────────────
+// Background Worker nhận SIGTERM khi Render deploy mới hoặc restart
+process.on('SIGTERM', () => {
+  logger.info('[SCHEDULER] Nhận SIGTERM — dừng sau khi job hiện tại hoàn thành');
+  process.exit(0);
+});
+
+process.on('SIGINT', () => {
+  logger.info('[SCHEDULER] Nhận SIGINT — dừng');
+  process.exit(0);
+});
 
 main().catch((err) => {
   logger.error('[SCHEDULER] Lỗi không xử lý được', { error: err.message, stack: err.stack });
