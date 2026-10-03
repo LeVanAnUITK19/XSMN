@@ -134,6 +134,11 @@ export const getResultByProvince = async (req, res) => {
 export const createResult = async (req, res) => {
   try {
     const newData = await Result.create(req.body);
+
+    // Xóa cache sau khi tạo record mới (giống PUT)
+    const deleted = await deleteCacheByPattern('results:*');
+    console.log(`[cache] POST /results → invalidated ${deleted} keys`);
+
     res.status(201).json(newData);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -165,7 +170,8 @@ export const saveResult = async (req, res) => {
 
     // Xóa tất cả cache liên quan khi có data mới
     // Dùng SCAN thay cho KEYS để tránh block Redis
-    await deleteCacheByPattern('results:*');
+    const deleted = await deleteCacheByPattern('results:*');
+    console.log(`[cache] PUT /results → invalidated ${deleted} keys`);
 
     res.json(result);
   } catch (err) {
