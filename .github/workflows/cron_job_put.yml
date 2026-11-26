@@ -1,8 +1,9 @@
 name: Crawl_PUT
 
-# Disabled: replaced by Render Cron Job (scheduler/)
-# Re-enable by restoring the schedule: block below
 on:
+  schedule:
+    # Mỗi 5 phút từ 15:00 đến 16:55 giờ Việt Nam (UTC+7).
+    - cron: '*/5 8,9 * * *'
   workflow_dispatch:
     inputs:
       reason:

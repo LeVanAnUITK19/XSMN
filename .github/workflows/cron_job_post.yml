@@ -1,8 +1,9 @@
 name: Crawl_POST
 
-# Disabled: replaced by Render Cron Job (scheduler/)
-# Re-enable by restoring the schedule: block below
 on:
+  schedule:
+    # 14:00, 14:15, 14:30, 14:45 giờ Việt Nam (UTC+7).
+    - cron: '0,15,30,45 7 * * *'
   workflow_dispatch:
     inputs:
       reason:
