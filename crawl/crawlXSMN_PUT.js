@@ -1,6 +1,6 @@
 import puppeteer from "puppeteer";
 
-const API_URL = process.env.API_URL || "https://xsmn.onrender.com/api/results";
+const API_URL = process.env.API_URL || "https://xsmn-5jbi.onrender.com/api/results";
 const HEALTH_URL = API_URL.replace("/results", "/results/health");
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
