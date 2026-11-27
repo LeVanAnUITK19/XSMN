@@ -4,15 +4,34 @@ const API_URL = process.env.API_URL || "https://xsmn.onrender.com/api/results";
 const HEALTH_URL = API_URL.replace("/results", "/results/health");
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+const isRenderSuspended = (response, body = "") =>
+  response.headers.get("x-render-routing")?.toLowerCase() === "suspend" ||
+  /this service has been suspended/i.test(body);
 
-// Fix 1: Đánh thức Render trước khi crawl (tránh cold start timeout)
+class FatalApiError extends Error {}
+
 const warmUpRender = async () => {
   console.log("🔥 Warming up Render server...");
   try {
-    await fetch(HEALTH_URL);
-    console.log("✅ Render is awake");
-  } catch (_) {
-    console.log("⏳ Render đang thức dậy, chờ 30s...");
+    const res = await fetch(HEALTH_URL, { signal: AbortSignal.timeout(15000) });
+    const body = await res.text();
+    if (isRenderSuspended(res, body)) {
+      throw new FatalApiError(
+        "Render service is suspended. Resume or redeploy it in Render before retrying the crawl.",
+      );
+    }
+    if (!res.ok) {
+      console.log(`⚠️ Health check returned HTTP ${res.status}; waiting for Render...`);
+    } else {
+      console.log("✅ Render health endpoint responded");
+    }
+  } catch (err) {
+    if (err instanceof FatalApiError) throw err;
+    if (err.name === "AbortError" || err.name === "TimeoutError") {
+      console.log("⏳ Health check timed out; waiting 30s for cold start...");
+    } else {
+      console.log("⏳ Health check could not connect; waiting 30s for cold start...");
+    }
   }
   await sleep(30000);
 };
@@ -113,9 +132,14 @@ const sendToAPI = async (data) => {
     try {
       console.log(`🚀 Send attempt ${i}/5`);
 
+      const headers = { "Content-Type": "application/json" };
+      if (process.env.SCHEDULER_API_TOKEN) {
+        headers.Authorization = `Bearer ${process.env.SCHEDULER_API_TOKEN}`;
+      }
+
       const res = await fetch(API_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify(data),
         signal: AbortSignal.timeout(30000), // timeout 30s mỗi request
       });
@@ -123,12 +147,24 @@ const sendToAPI = async (data) => {
       const text = await res.text();
       console.log("Response:", text);
 
+      if (isRenderSuspended(res, text)) {
+        throw new FatalApiError(
+          "Render service is suspended. Resume or redeploy it in Render before retrying the crawl.",
+        );
+      }
+
       if (res.ok) {
         console.log("✅ SUCCESS");
         return;
       }
       console.log(`⚠️ Server trả về ${res.status}`);
+      if (res.status >= 400 && res.status < 500 && res.status !== 429) {
+        throw new FatalApiError(
+          `API rejected the request with HTTP ${res.status}; check API_URL and SCHEDULER_API_TOKEN.`,
+        );
+      }
     } catch (err) {
+      if (err instanceof FatalApiError) throw err;
       console.log("❌ Error:", err.message);
     }
 
